@@ -1,0 +1,24 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+*.log
+*.key
+*.pem
+*.pfx
+*.p12
+coverage/
+dist/
+build/
+node_modules/
+.venv/
+__pycache__/
+
+# Local lab state and installation media
+deployments/lab/lab.env
+deployments/lab/artifacts/
+*.iso
+*.qcow2
+*.vhd
+*.vhdx
+*.nvram

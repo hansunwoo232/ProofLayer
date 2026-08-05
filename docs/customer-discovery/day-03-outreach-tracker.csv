@@ -1,0 +1,6 @@
+id,organization,target_role,contact_name,channel,status,personalization,next_action
+OUT-001,Barikat,Managed Security Services Director,,LinkedIn or email,deferred_until_mvp,"Multi-customer parser and content regression","Revisit after the first repeatable Windows-to-Splunk run"
+OUT-002,Cyberwise,SOC or MDR Director,,LinkedIn or email,deferred_until_mvp,"Mature SOC repeatability and evidence","Revisit after the first repeatable Windows-to-Splunk run"
+OUT-003,Biznet Bilişim,SOC Services Manager,,LinkedIn or email,deferred_until_mvp,"Endpoint-to-Splunk path and safe pilot requirements","Revisit after the first repeatable Windows-to-Splunk run"
+OUT-004,ADEO Cyber Security,MDR or SOC Manager,,LinkedIn or email,deferred_until_mvp,"MDR operational fit and customer approval","Revisit after the first repeatable Windows-to-Splunk run"
+OUT-005,DnDx Cyber Security,SOC/MDR Lead,,LinkedIn or email,deferred_until_mvp,"Detection uptime-monitor thesis for MDR","Revisit after the first repeatable Windows-to-Splunk run"

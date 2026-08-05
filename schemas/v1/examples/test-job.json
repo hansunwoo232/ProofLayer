@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "job_id": "8a3d9ce5-97d4-4dc1-9c5b-2cf568e3b4a1",
+  "correlation_id": "PL-7F9A1C3D5E8B2A104C6D9F013B7E52A8",
+  "environment_id": "72f25e49-4534-44ab-b037-09aeea0ded9d",
+  "host_id": "83866b31-cd6f-45e1-a275-220ae4012e72",
+  "scenario_id": "windows-process-marker",
+  "scenario_version": "0.1.0",
+  "requested_by": "1d8cf845-630d-462a-87ad-f22c80bb5b27",
+  "requested_at": "2026-07-29T16:00:00Z",
+  "expires_at": "2026-07-29T16:05:00Z",
+  "nonce": "hq3X8lrZAMSkcW1xL9E4Jw",
+  "parameters": {},
+  "signature": {
+    "algorithm": "Ed25519",
+    "key_id": "scenario-signing-key-2026-01",
+    "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  }
+}

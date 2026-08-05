@@ -1,0 +1,38 @@
+name: prooflayer-splunk-lab
+
+services:
+  splunk:
+    image: splunk/splunk:10.4-rhel9@sha256:71b7003ffb6a1fe6e116ac382652ecfb2adf321a63eb16368bfb0aed3444bc36
+    platform: linux/amd64
+    container_name: prooflayer-splunk
+    hostname: prooflayer-splunk
+    restart: "no"
+    environment:
+      SPLUNK_START_ARGS: --accept-license
+      SPLUNK_GENERAL_TERMS: ${SPLUNK_GENERAL_TERMS}
+      SPLUNK_PASSWORD: ${SPLUNK_PASSWORD}
+    ports:
+      - "127.0.0.1:18000:8000"
+      - "127.0.0.1:8088:8088"
+      - "127.0.0.1:8089:8089"
+    volumes:
+      - splunk-etc:/opt/splunk/etc
+      - splunk-var:/opt/splunk/var
+    mem_limit: 4g
+    cpus: 2.5
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          test "$(curl -ksS -o /dev/null -w '%{http_code}'
+          https://127.0.0.1:8089/services/server/info)" = "401"
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 90s
+
+volumes:
+  splunk-etc:
+    name: prooflayer-splunk-etc-v3
+  splunk-var:
+    name: prooflayer-splunk-var-v3

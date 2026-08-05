@@ -1,0 +1,16 @@
+{
+  "overall_status": "failed",
+  "root_cause": {
+    "stage": "field_validation",
+    "code": "REQUIRED_FIELD_MISSING"
+  },
+  "stages": [
+    { "stage": "execution", "status": "passed", "label": "PASS" },
+    { "stage": "endpoint_telemetry", "status": "passed", "label": "PASS" },
+    { "stage": "siem_ingestion", "status": "passed", "label": "PASS" },
+    { "stage": "field_validation", "status": "failed", "label": "FAIL" },
+    { "stage": "detection", "status": "not_tested", "label": "NOT TESTED" },
+    { "stage": "alert", "status": "not_tested", "label": "NOT TESTED" },
+    { "stage": "cleanup", "status": "passed", "label": "PASS" }
+  ]
+}

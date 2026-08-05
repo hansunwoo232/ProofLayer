@@ -1,0 +1,9 @@
+{
+  "status": "passed",
+  "detected": true,
+  "correlation_id": "PL-0123456789ABCDEF0123456789ABCDEF",
+  "detection_id": "prooflayer.windows_process_marker",
+  "mode": "inline",
+  "rule_reference": "builtin:prooflayer.windows_process_marker",
+  "match_count": 1
+}

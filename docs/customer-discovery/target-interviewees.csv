@@ -1,0 +1,31 @@
+id,priority,organization,segment,target_role,why_this_target,contact_path,status
+1,C,Yemeksepeti,Marketplace,Security Operations Manager,"Yüksek hacimli dijital platformda detection reliability hipotezi","Kariyer sayfası/LinkedIn; ekip ve tooling doğrulanacak",araştırılacak
+2,C,Peak,Game technology,Security Engineering Manager,"Global teknoloji ürünü ve cloud-native operasyon perspektifi","Kariyer sayfası/LinkedIn; ilgili rol doğrulanacak",araştırılacak
+3,C,Dream Games,Game technology,Security Engineering Manager,"Hızlı büyüyen cloud-native ürün ekibi perspektifi","Kariyer sayfası/LinkedIn; ilgili rol doğrulanacak",araştırılacak
+4,C,Commencis,Digital technology,Information Security Manager,"Orta ölçekli teknoloji hizmeti ve erişilebilir pilot hipotezi","Resmî site/LinkedIn; ilgili rol doğrulanacak",araştırılacak
+5,C,DefineX,Digital technology,Information Security Manager,"Finans ve kurumsal teknoloji projeleri perspektifi","Resmî site/LinkedIn; ilgili rol doğrulanacak",araştırılacak
+6,A,Barikat,MSSP,Managed Security Services Director,"Çok müşterili detection doğrulama ve kanal potansiyeli","Resmî site/LinkedIn; rol adı doğrulanacak",araştırılacak
+7,A,Cyberwise,MSSP,SOC or MDR Director,"Olgun SOC süreçlerinde regression doğrulama ihtiyacı","Resmî site/LinkedIn; rol adı doğrulanacak",araştırılacak
+8,A,Biznet Bilişim,MSSP,SOC Services Manager,"SIEM ve yönetilen güvenlik müşterilerine erişim","Resmî site/LinkedIn; rol adı doğrulanacak",araştırılacak
+9,A,ADEO Cyber Security,MSSP,MDR or SOC Manager,"MSSP design partner ve dağıtım modeli testi","Resmî site/LinkedIn; rol adı doğrulanacak",araştırılacak
+10,A,DnDx Cyber Security,MSSP,SOC/MDR Lead,"Yönetilen SOC ortamında hafif ürün hipotezi","Resmî site/LinkedIn; rol adı doğrulanacak",araştırılacak
+11,B,Soitron Türkiye,MSSP,SOC Director,"SOC operasyonu ve detection engineering geri bildirimi","Resmî site/LinkedIn; rol adı doğrulanacak",araştırılacak
+12,B,KoçSistem,Managed services,Cyber Security Operations Manager,"Kurumsal müşteri ve yönetilen servis perspektifi","Resmî site/LinkedIn; rol adı doğrulanacak",araştırılacak
+13,B,Turkcell Siber Güvenlik,Telecom/MSSP,SOC Services Manager,"Büyük ölçek telemetry ve managed service bakışı","Resmî site/LinkedIn; rol adı doğrulanacak",araştırılacak
+14,B,Türk Telekom Siber Güvenlik,Telecom/MSSP,SOC Services Manager,"SIEM/SOC zinciri ve kanal potansiyeli","Resmî site/LinkedIn; rol adı doğrulanacak",araştırılacak
+15,B,Vodafone Business Türkiye,Telecom/MSSP,Cyber Security Product Manager,"Yönetilen güvenlik hizmeti ürünleşme bakışı","Resmî site/LinkedIn; rol adı doğrulanacak",araştırılacak
+16,B,iyzico,Fintech,SOC Manager or Detection Engineer,"Yüksek olay hacmi ve regülasyon baskısı","Kariyer sayfası/LinkedIn; ekip ve tooling doğrulanacak",araştırılacak
+17,B,Papara,Fintech,Security Operations Manager,"Hızlı büyüyen dijital finans ortamı","Kariyer sayfası/LinkedIn; ekip ve tooling doğrulanacak",araştırılacak
+18,B,Midas,Fintech,Security Engineering Manager,"Cloud-native finans ürününde detection güvenilirliği","Kariyer sayfası/LinkedIn; ekip ve tooling doğrulanacak",araştırılacak
+19,B,Sipay,Fintech,SOC or Information Security Manager,"Ödeme altyapısında görünürlük ve denetim kanıtı","Kariyer sayfası/LinkedIn; ekip ve tooling doğrulanacak",araştırılacak
+20,B,Param,Fintech,Security Operations Manager,"Ödeme ekosisteminde detection pipeline ihtiyacı","Kariyer sayfası/LinkedIn; ekip ve tooling doğrulanacak",araştırılacak
+21,C,Trendyol,E-commerce,Detection Engineering Lead,"Yüksek ölçek ve sürekli değişen telemetry","Kariyer sayfası/LinkedIn; rol adı doğrulanacak",araştırılacak
+22,C,Hepsiburada,E-commerce,SOC or Cyber Defense Manager,"Çok katmanlı kurumsal detection ortamı","Kariyer sayfası/LinkedIn; rol adı doğrulanacak",araştırılacak
+23,C,sahibinden.com,Marketplace,Security Operations Manager,"Dijital pazar yeri ve geniş saldırı yüzeyi","Kariyer sayfası/LinkedIn; ekip ve tooling doğrulanacak",araştırılacak
+24,C,Obilet,Travel technology,Information Security Manager,"Orta ölçekli dijital ürün ve hızlı pilot potansiyeli","Kariyer sayfası/LinkedIn; ekip ve tooling doğrulanacak",araştırılacak
+25,C,Insider,B2B SaaS,Security Operations or SecOps Lead,"Global SaaS ve compliance kaynaklı detection ihtiyacı","Kariyer sayfası/LinkedIn; ekip ve tooling doğrulanacak",araştırılacak
+26,C,Logo Yazılım,B2B software,Security Operations Manager,"Kurumsal yazılım ve geniş müşteri ekosistemi","Kariyer sayfası/LinkedIn; ekip ve tooling doğrulanacak",araştırılacak
+27,C,Enpara,Dijital bankacılık,SOC or Cyber Defense Manager,"Dijital finans ve güçlü kontrol gereksinimi","LinkedIn; bağımsız ekip yapısı doğrulanacak",araştırılacak
+28,C,Fibabanka,Banking,SOC Manager,"Orta ölçekli banka profili ve regülasyon baskısı","Kariyer sayfası/LinkedIn; rol adı doğrulanacak",araştırılacak
+29,C,Odeabank,Banking,SOC Manager,"Orta ölçekli banka ve detection doğrulama ihtiyacı","Kariyer sayfası/LinkedIn; rol adı doğrulanacak",araştırılacak
+30,C,Alternatif Bank,Banking,SOC or Information Security Manager,"Erişilebilir banka segmenti hipotezini test etme","Kariyer sayfası/LinkedIn; rol adı doğrulanacak",araştırılacak

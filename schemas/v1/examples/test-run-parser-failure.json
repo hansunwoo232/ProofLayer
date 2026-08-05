@@ -1,0 +1,117 @@
+{
+  "schema_version": "1.0",
+  "run_id": "276fe86c-2ea6-4181-bce6-7ce48fe05f78",
+  "job_id": "8a3d9ce5-97d4-4dc1-9c5b-2cf568e3b4a1",
+  "correlation_id": "PL-7F9A1C3D5E8B2A104C6D9F013B7E52A8",
+  "environment_id": "72f25e49-4534-44ab-b037-09aeea0ded9d",
+  "host": {
+    "host_id": "83866b31-cd6f-45e1-a275-220ae4012e72",
+    "display_name": "WIN-LAB-01",
+    "platform": "windows",
+    "runner_version": "0.1.0"
+  },
+  "scenario": {
+    "scenario_id": "windows-process-marker",
+    "scenario_version": "0.1.0",
+    "name": "Windows Process Marker"
+  },
+  "overall_status": "failed",
+  "started_at": "2026-07-29T16:00:02Z",
+  "completed_at": "2026-07-29T16:01:02Z",
+  "root_cause": {
+    "category": "missing_required_field",
+    "summary": "The event reached Splunk, but process.command_line was not extracted.",
+    "field": "process.command_line"
+  },
+  "stages": [
+    {
+      "stage": "execution",
+      "status": "passed",
+      "required": true,
+      "started_at": "2026-07-29T16:00:02Z",
+      "completed_at": "2026-07-29T16:00:03Z",
+      "latency_ms": 812,
+      "evidence": {
+        "reference_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "error": null
+    },
+    {
+      "stage": "endpoint_telemetry",
+      "status": "passed",
+      "required": true,
+      "started_at": "2026-07-29T16:00:03Z",
+      "completed_at": "2026-07-29T16:00:05Z",
+      "latency_ms": 1810,
+      "evidence": {
+        "event_count": 1,
+        "event_id": 1,
+        "record_id": 1742
+      },
+      "error": null
+    },
+    {
+      "stage": "siem_ingestion",
+      "status": "passed",
+      "required": true,
+      "started_at": "2026-07-29T16:00:05Z",
+      "completed_at": "2026-07-29T16:00:21Z",
+      "latency_ms": 16090,
+      "evidence": {
+        "event_count": 1,
+        "index": "prooflayer_lab",
+        "sourcetype": "XmlWinEventLog:Microsoft-Windows-Sysmon/Operational"
+      },
+      "error": null
+    },
+    {
+      "stage": "field_validation",
+      "status": "failed",
+      "required": true,
+      "started_at": "2026-07-29T16:00:21Z",
+      "completed_at": "2026-07-29T16:00:22Z",
+      "latency_ms": 80,
+      "evidence": {
+        "matched_fields": ["process.name", "host.name", "user.name"],
+        "missing_fields": ["process.command_line"]
+      },
+      "error": {
+        "code": "REQUIRED_FIELD_MISSING",
+        "message": "Required field process.command_line was not extracted.",
+        "retryable": false
+      }
+    },
+    {
+      "stage": "detection",
+      "status": "not_tested",
+      "required": true,
+      "started_at": null,
+      "completed_at": null,
+      "latency_ms": null,
+      "evidence": {},
+      "error": null
+    },
+    {
+      "stage": "alert",
+      "status": "not_tested",
+      "required": false,
+      "started_at": null,
+      "completed_at": null,
+      "latency_ms": null,
+      "evidence": {},
+      "error": null
+    },
+    {
+      "stage": "cleanup",
+      "status": "passed",
+      "required": true,
+      "started_at": "2026-07-29T16:00:22Z",
+      "completed_at": "2026-07-29T16:00:23Z",
+      "latency_ms": 120,
+      "evidence": {
+        "reference_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "error": null
+    }
+  ]
+}
