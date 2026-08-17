@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.prooflayer.dev/v1/create-test-job-request.schema.json",
+  "title": "ProofLayer Create Test Job Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "environment_id",
+    "host_id",
+    "scenario_id",
+    "scenario_version"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "environment_id": { "type": "string", "format": "uuid" },
+    "host_id": { "type": "string", "format": "uuid" },
+    "scenario_id": {
+      "enum": [
+        "windows-process-marker",
+        "windows-registry-run-key-canary",
+        "windows-scheduled-task-canary"
+      ]
+    },
+    "scenario_version": { "const": "0.1.0" }
+  }
+}

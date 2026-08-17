@@ -17,8 +17,8 @@ documentation is current.
 
 ## Code and API rules
 
-- Runner: Go. Control plane: Go or Python/FastAPI after a PoC decision.
-  Dashboard: TypeScript.
+- Runner: Go. Control Plane: Go under ADR-0005. Dashboard: TypeScript when the
+  single-file PoC surface becomes an application.
 - External API boundaries require input schemas and explicit versions.
 - Identifiers must be unpredictable and timestamps must be stored in UTC.
 - Logs must not contain secrets, customer content, or full command lines by

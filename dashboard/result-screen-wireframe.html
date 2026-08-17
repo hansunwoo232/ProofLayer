@@ -231,6 +231,52 @@
       font-weight: 820;
     }
 
+    .run-action {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 18px;
+      padding: 18px 20px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel-raised);
+    }
+
+    .run-action-copy { min-width: 0; }
+
+    .run-action-title {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 14px;
+      font-weight: 780;
+    }
+
+    .run-state {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .run-button {
+      flex: 0 0 auto;
+      min-width: 126px;
+      padding: 11px 17px;
+      border: 0;
+      border-radius: 8px;
+      color: var(--accent-ink);
+      background: var(--accent);
+      font-weight: 820;
+      cursor: pointer;
+    }
+
+    .run-button:disabled {
+      color: #75817d;
+      background: #27332f;
+      cursor: not-allowed;
+    }
+
     .panel {
       border: 1px solid var(--line);
       border-radius: 14px;
@@ -436,6 +482,8 @@
       main { padding: 26px 16px 48px; }
       .hero { display: grid; }
       .overall { width: 100%; }
+      .run-action { align-items: stretch; flex-direction: column; }
+      .run-button { width: 100%; }
       .panel-header { align-items: flex-start; flex-direction: column; }
       .field-compare { grid-template-columns: 1fr; }
     }
@@ -479,7 +527,7 @@
         <section class="hero" aria-labelledby="page-title">
           <div>
             <div class="eyebrow">
-              <span class="wireframe-tag">Day 26 wireframe</span>
+              <span class="wireframe-tag">Day 27 local PoC</span>
               <span class="schema-tag">Result schema v1.0</span>
             </div>
             <h1 id="page-title">Windows Process Marker</h1>
@@ -489,6 +537,14 @@
             <span class="overall-label">Overall result</span>
             <span class="overall-value"><span aria-hidden="true">×</span> Failed</span>
           </div>
+        </section>
+
+        <section class="run-action" aria-labelledby="run-action-title">
+          <div class="run-action-copy">
+            <strong class="run-action-title" id="run-action-title">Run the approved process-marker scenario</strong>
+            <p class="run-state" id="run-state" role="status" aria-live="polite">Connecting to the local Control Plane…</p>
+          </div>
+          <button class="run-button" id="run-test" type="button" aria-describedby="run-state" disabled>Run Test</button>
         </section>
 
         <section class="panel" aria-labelledby="pipeline-title">
@@ -587,6 +643,84 @@
     "root_cause": "missing_required_field",
     "raw_event_included": false
   }
+  </script>
+  <script>
+    (() => {
+      "use strict";
+
+      const button = document.querySelector("#run-test");
+      const status = document.querySelector("#run-state");
+      const request = Object.freeze({
+        schema_version: "1.0",
+        environment_id: "6ba7b810-9dad-41d1-80b4-00c04fd430c8",
+        host_id: "6ba7b811-9dad-41d1-80b4-00c04fd430c8",
+        scenario_id: "windows-process-marker",
+        scenario_version: "0.1.0"
+      });
+
+      let csrfToken = "";
+      let activeIdempotencyKey = "";
+
+      function createIdempotencyKey() {
+        const bytes = crypto.getRandomValues(new Uint8Array(24));
+        return btoa(String.fromCharCode(...bytes))
+          .replaceAll("+", "-")
+          .replaceAll("/", "_")
+          .replaceAll("=", "");
+      }
+
+      async function initialize() {
+        try {
+          const response = await fetch("/v1/session", {
+            credentials: "same-origin",
+            cache: "no-store"
+          });
+          if (!response.ok) throw new Error("session unavailable");
+          const session = await response.json();
+          if (typeof session.csrf_token !== "string" || session.csrf_token.length < 32) {
+            throw new Error("session invalid");
+          }
+          csrfToken = session.csrf_token;
+          button.disabled = false;
+          status.textContent = "Ready · fixed lab host · signed allowlisted job · two-minute expiry";
+        } catch {
+          status.textContent = "Start the local Control Plane to enable Run Test.";
+        }
+      }
+
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        button.textContent = "Queuing…";
+        status.textContent = "Validating and signing the test request…";
+        activeIdempotencyKey ||= createIdempotencyKey();
+
+        try {
+          const response = await fetch("/v1/test-jobs", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              "Content-Type": "application/json",
+              "Idempotency-Key": activeIdempotencyKey,
+              "X-ProofLayer-CSRF": csrfToken
+            },
+            body: JSON.stringify(request)
+          });
+          const receipt = await response.json();
+          if (!response.ok || receipt.status !== "queued") {
+            throw new Error(receipt.code || "queue request failed");
+          }
+          const shortCorrelation = `${receipt.correlation_id.slice(0, 11)}…${receipt.correlation_id.slice(-6)}`;
+          button.textContent = "Test queued";
+          status.textContent = `${receipt.replayed ? "Existing request confirmed" : "Queued"} · ${shortCorrelation} · awaiting Runner lease`;
+        } catch {
+          button.disabled = false;
+          button.textContent = "Retry Run Test";
+          status.textContent = "The request was not confirmed. A retry will reuse the same idempotency key.";
+        }
+      });
+
+      initialize();
+    })();
   </script>
 </body>
 </html>

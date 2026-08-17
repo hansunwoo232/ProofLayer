@@ -139,7 +139,7 @@ flowchart LR
 
 | Topic | Deadline | Secure default |
 |---|---|---|
-| Control Plane language | Day 5 | Option that makes controls easiest to test with least code |
+| Control Plane language | Resolved by ADR-0005 | Go standard library for the PoC |
 | Scenario signature | Day 12 | Evaluate Ed25519 plus canonical manifest |
 | Runner local privilege | Day 15 | Dedicated service account and minimum Windows privileges |
 | Audit integrity | Day 31 | Append-only hash-chain PoC |

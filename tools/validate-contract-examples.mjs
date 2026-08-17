@@ -20,6 +20,8 @@ const runnerResults = await Promise.all([
 ]);
 const job = await readJson("examples/test-job.json");
 const run = await readJson("examples/test-run-parser-failure.json");
+const createJobRequestSchema = await readJson("create-test-job-request.schema.json");
+const jobReceiptSchema = await readJson("test-job-receipt.schema.json");
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -166,6 +168,22 @@ assert.match(job.nonce, /^[A-Za-z0-9_-]{22,64}$/);
 assert.equal(job.signature.algorithm, "Ed25519");
 assert.match(job.signature.value, /^[A-Za-z0-9_-]{80,120}$/);
 
+assert.equal(createJobRequestSchema.additionalProperties, false);
+assert.deepEqual(createJobRequestSchema.required, [
+  "schema_version",
+  "environment_id",
+  "host_id",
+  "scenario_id",
+  "scenario_version",
+]);
+assert.deepEqual(createJobRequestSchema.properties.scenario_id.enum, [
+  "windows-process-marker",
+  "windows-registry-run-key-canary",
+  "windows-scheduled-task-canary",
+]);
+assert.equal(jobReceiptSchema.additionalProperties, false);
+assert.equal(jobReceiptSchema.properties.status.const, "queued");
+
 assert.equal(run.schema_version, "1.0");
 assert.match(run.run_id, uuidPattern);
 assert.equal(run.job_id, job.job_id);
@@ -212,6 +230,7 @@ console.log("PASS registry canary scenario example");
 console.log("PASS scheduled task canary scenario example");
 console.log("PASS three versioned Runner result examples share one shape");
 console.log("PASS test job example");
+console.log("PASS create-job request and receipt contracts");
 console.log("PASS parser-failure run example");
 console.log("PASS cross-contract security invariants");
 

@@ -14,8 +14,22 @@ assert.match(source, />\s*PASS</);
 assert.match(source, />\s*FAIL</);
 assert.match(source, />\s*NOT TESTED</);
 assert.match(source, /Evidence boundary:/);
+assert.match(source, /id="run-test"[^>]*disabled/);
+assert.match(source, /role="status" aria-live="polite"/);
+assert.match(source, /fetch\("\/v1\/session"/);
+assert.match(source, /fetch\("\/v1\/test-jobs"/);
+assert.match(source, /"Idempotency-Key": activeIdempotencyKey/);
+assert.match(source, /"X-ProofLayer-CSRF": csrfToken/);
+assert.match(source, /scenario_id: "windows-process-marker"/);
+assert.doesNotMatch(source, /\b(?:command|arguments):\s*["'`]/);
 assert.doesNotMatch(source, /<script[^>]+src=/);
 assert.doesNotMatch(source, /https?:\/\/[^\s"']+\.(?:js|css)/i);
+
+const clickHandlerStart = source.indexOf('button.addEventListener("click"');
+const disableBeforePost = source.indexOf("button.disabled = true", clickHandlerStart);
+const jobPost = source.indexOf('fetch("/v1/test-jobs"', clickHandlerStart);
+assert.ok(clickHandlerStart > 0 && disableBeforePost > clickHandlerStart && disableBeforePost < jobPost,
+  "Run Test must disable synchronously before the queue request");
 
 const dataMatch = source.match(
   /<script id="prooflayer-run" type="application\/json">\s*([\s\S]*?)\s*<\/script>/,
