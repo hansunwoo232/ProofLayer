@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "status": "passed",
+  "correlation_id": "PL-40A2D6E44B3A48A6AC36493644C820A3",
+  "scenario_id": "windows-process-marker",
+  "scenario_version": "0.1.0",
+  "started_at": "2026-08-05T18:45:24.321Z",
+  "completed_at": "2026-08-05T18:45:25.552Z",
+  "latency_ms": 1231,
+  "cleanup_status": "passed"
+}

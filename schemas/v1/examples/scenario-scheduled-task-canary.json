@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "scenario_id": "windows-scheduled-task-canary",
+  "scenario_version": "0.1.0",
+  "name": "Windows Scheduled Task Canary",
+  "description": "Creates and immediately deletes one correlation-bound, harmless logon task.",
+  "platform": "windows",
+  "attack_technique": "T1053.005",
+  "action": "create_scheduled_task_canary",
+  "execution": {
+    "handler": "builtin.create_scheduled_task_canary",
+    "network_access": "none"
+  },
+  "risk_level": "moderate",
+  "timeout_seconds": 30,
+  "cleanup_required": true,
+  "cleanup": {
+    "strategy": "delete_scheduled_task",
+    "timeout_seconds": 10,
+    "max_attempts": 1,
+    "verify_absence": true
+  },
+  "parameter_schema": {},
+  "expected_telemetry": {
+    "provider": "windows_event_log",
+    "event_ids": [106, 141],
+    "required_fields": [
+      "task.name",
+      "host.name",
+      "user.name"
+    ]
+  }
+}

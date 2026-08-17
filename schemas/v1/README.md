@@ -6,6 +6,7 @@ ProofLayer components.
 ## Contracts
 
 - `scenario.schema.json`: approved scenario metadata and safe action type
+- `runner-execution-result.schema.json`: versioned result emitted by the Runner
 - `test-job.schema.json`: short-lived signed execution authorization
 - `test-run.schema.json`: stage-level execution and observation result
 
@@ -18,6 +19,7 @@ node tools/validate-contract-examples.mjs
 ```
 
 The dependency-free validator checks JSON syntax and the security-critical
-invariants used by the example payloads. CI should later add a full JSON Schema
-Draft 2020-12 validator.
-
+invariants used by the process-marker, Registry Run Key canary, Scheduled Task
+canary, and their versioned Runner results. It also proves that all three Runner
+result examples have the same field shape. CI should later add a full JSON
+Schema Draft 2020-12 validator.

@@ -13,8 +13,8 @@
 | 6 | P0 | Read-only Splunk exact-ID connector | SIEM-ingestion stage evidence |
 | 7 | P0 | Required-field validator | Parser/field stage evidence |
 | 8 | P0 | Stage state machine and failure propagation | Product-level PASS/FAIL result |
-| 9 | P0 | Cleanup and artifact-absence verifier | MVP safety gate |
-| 10 | P1 | Minimal run API and dashboard pipeline view | Visible demonstration gate |
+| 9 | P0 | Cleanup and artifact-absence verifier | COMPLETE — Day 24 Registry and Day 25 Scheduled Task live proofs |
+| 10 | P1 | Minimal run API and dashboard pipeline view | IN PROGRESS — Day 26 static result wireframe complete; live flow remains |
 | 11 | P1 | Redacted JSON/HTML export | Pilot evidence package |
 | 12 | P1 | Clean-lab installer and demo runbook | Reproducible external demo |
 

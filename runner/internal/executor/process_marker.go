@@ -15,3 +15,11 @@ func RunProcessMarker(ctx context.Context, correlationID string) error {
 	}
 	return runProcessMarker(ctx, correlationID)
 }
+
+func processMarkerHandler() ScenarioHandler {
+	return handlerFunctions{
+		execute:      RunProcessMarker,
+		cleanup:      noCleanup,
+		verifyAbsent: noCleanup,
+	}
+}

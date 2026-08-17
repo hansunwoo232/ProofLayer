@@ -37,9 +37,11 @@ drafts remain preserved but will not be sent before this gate.
 Revisit immediately after the first repeatable Windows-to-Splunk end-to-end run,
 or earlier if a warm inbound design-partner opportunity appears.
 
-## August 5, 2026 review
+## August 11, 2026 review
 
-The repeatable technical run now exists, but the visible stage-level MVP and
-reliable cleanup demonstration are not complete. The founding instruction to
-contact prospects only after the MVP remains in force. Review again when all
-five decision-gate items can be shown in one product-facing demo.
+The repeatable technical run and reliable cleanup demonstration now exist. The
+Day 24 Registry canary returned cleanup PASS and an independent artifact-absence
+query returned PASS. The visible product-facing stage view is still not
+implemented, so the instruction to contact prospects only after the MVP remains
+in force. Review again when all five decision-gate items can be shown in one
+product-facing demo.

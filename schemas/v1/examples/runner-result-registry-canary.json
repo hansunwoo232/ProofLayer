@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "status": "passed",
+  "correlation_id": "PL-F2823DE375B9E68556B3682E6EAC2B71",
+  "scenario_id": "windows-registry-run-key-canary",
+  "scenario_version": "0.1.0",
+  "started_at": "2026-08-11T20:05:00.000Z",
+  "completed_at": "2026-08-11T20:05:00.006Z",
+  "latency_ms": 6,
+  "cleanup_status": "passed"
+}

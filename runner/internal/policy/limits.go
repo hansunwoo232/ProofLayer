@@ -54,6 +54,15 @@ func (limits ExecutionLimits) ExecutionContext(parent context.Context) (context.
 	return contextWithDeadline, cancel, nil
 }
 
+func (limits ExecutionLimits) CleanupContext(parent context.Context) (context.Context, context.CancelFunc, error) {
+	if err := limits.Validate(); err != nil {
+		return nil, nil, err
+	}
+	contextWithoutCancellation := context.WithoutCancel(parent)
+	contextWithDeadline, cancel := context.WithTimeout(contextWithoutCancellation, limits.CleanupRuntime)
+	return contextWithDeadline, cancel, nil
+}
+
 func invalid(field string) error {
 	return fmt.Errorf("%w: %s", ErrInvalidLimits, field)
 }

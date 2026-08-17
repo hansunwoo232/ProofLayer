@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-func TestBuiltInCatalogContainsOnlyApprovedScenario(t *testing.T) {
+func TestBuiltInCatalogContainsOnlyApprovedScenarios(t *testing.T) {
 	catalog := BuiltInCatalog()
-	if catalog.Len() != 1 {
-		t.Fatalf("allowlist size = %d, want 1", catalog.Len())
+	if catalog.Len() != 3 {
+		t.Fatalf("allowlist size = %d, want 3", catalog.Len())
 	}
 
 	definition, err := catalog.Resolve("windows-process-marker", "0.1.0")
@@ -20,6 +20,28 @@ func TestBuiltInCatalogContainsOnlyApprovedScenario(t *testing.T) {
 	}
 	if definition.CleanupHandler != "builtin.verify_no_artifacts" {
 		t.Fatalf("cleanup handler = %q", definition.CleanupHandler)
+	}
+
+	registryDefinition, err := catalog.Resolve("windows-registry-run-key-canary", "0.1.0")
+	if err != nil {
+		t.Fatalf("resolve approved registry scenario: %v", err)
+	}
+	if registryDefinition.Handler != "builtin.create_registry_canary" {
+		t.Fatalf("registry handler = %q", registryDefinition.Handler)
+	}
+	if registryDefinition.CleanupHandler != "builtin.remove_registry_value" {
+		t.Fatalf("registry cleanup handler = %q", registryDefinition.CleanupHandler)
+	}
+
+	taskDefinition, err := catalog.Resolve("windows-scheduled-task-canary", "0.1.0")
+	if err != nil {
+		t.Fatalf("resolve approved scheduled task scenario: %v", err)
+	}
+	if taskDefinition.Handler != "builtin.create_scheduled_task_canary" {
+		t.Fatalf("scheduled task handler = %q", taskDefinition.Handler)
+	}
+	if taskDefinition.CleanupHandler != "builtin.delete_scheduled_task" {
+		t.Fatalf("scheduled task cleanup handler = %q", taskDefinition.CleanupHandler)
 	}
 }
 

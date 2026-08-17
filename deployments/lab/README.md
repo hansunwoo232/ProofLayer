@@ -127,6 +127,59 @@ Arm64 NetKVM driver and the Windows state after three successful
 Windows → Sysmon → HEC → Splunk runs. UEFI and TPM state are preserved beside
 the QCOW2 snapshot in the ignored local lab directory.
 
+The `day-21-runner-observer-proof` checkpoint preserves the Runner, local
+Sysmon Observer, exact Splunk correlation, field-validation, and detection-plan
+proof completed before the Day 24 Registry canary.
+
+The `day-24-registry-cleanup-proof` checkpoint preserves the clean Windows,
+UEFI, and TPM state after the Registry canary returned execution PASS, cleanup
+PASS, and independent artifact-absence PASS.
+
+## Day 24 Registry Run Key canary
+
+Build the ignored read-only Runner media and attach it to the isolated VM:
+
+```bash
+./build-runner-iso.sh
+LAB_TOOLS_ISO_OVERRIDE="../../work/prooflayer-lab/prooflayer-runner.iso" ./labctl.sh tools
+```
+
+Inside an elevated PowerShell window, locate the CD-ROM and run the fixed
+wrapper:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+$media = Get-Volume | Where-Object DriveType -eq 'CD-ROM' | ForEach-Object { Get-Item "$($_.DriveLetter):\run-registry-day24.ps1" -ErrorAction SilentlyContinue } | Select-Object -First 1
+& $media.FullName
+```
+
+PASS requires both the Runner cleanup result and an independent PowerShell
+query to confirm that the correlation-bound HKCU Run value is absent.
+
+## Day 25 Scheduled Task canary
+
+Rebuild the ignored read-only Runner media and attach it to the isolated VM:
+
+```bash
+./build-runner-iso.sh
+LAB_TOOLS_ISO_OVERRIDE="../../work/prooflayer-lab/prooflayer-runner.iso" ./labctl.sh tools
+```
+
+Inside an elevated PowerShell window, locate the CD-ROM and run the fixed
+wrapper:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+$media = Get-Volume | Where-Object DriveType -eq 'CD-ROM' | ForEach-Object { Get-Item "$($_.DriveLetter):\run-scheduled-task-day25.ps1" -ErrorAction SilentlyContinue } | Select-Object -First 1
+& $media.FullName
+```
+
+PASS requires the Runner cleanup result, an independent Task Scheduler COM
+lookup, and an independent task artifact file check to confirm absence.
+
+The `day-25-scheduled-task-cleanup-proof` checkpoint preserves the clean
+Windows, UEFI, and TPM state after all three checks returned PASS.
+
 ## Network modes
 
 | Mode | Behavior | Intended use |

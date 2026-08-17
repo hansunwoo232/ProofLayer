@@ -25,7 +25,7 @@ type Catalog struct {
 }
 
 func BuiltInCatalog() Catalog {
-	definition := Definition{
+	processMarker := Definition{
 		ID:               "windows-process-marker",
 		Version:          "0.1.0",
 		Handler:          "builtin.emit_process_marker",
@@ -41,8 +41,43 @@ func BuiltInCatalog() Catalog {
 			"user.name",
 		},
 	}
+	registryRunKeyCanary := Definition{
+		ID:               "windows-registry-run-key-canary",
+		Version:          "0.1.0",
+		Handler:          "builtin.create_registry_canary",
+		Platform:         "windows",
+		TimeoutSeconds:   30,
+		CleanupHandler:   "builtin.remove_registry_value",
+		ExpectedProvider: "sysmon",
+		ExpectedEventIDs: []int{13},
+		RequiredFields: []string{
+			"host.name",
+			"registry.path",
+			"registry.value",
+			"user.name",
+		},
+	}
+	scheduledTaskCanary := Definition{
+		ID:               "windows-scheduled-task-canary",
+		Version:          "0.1.0",
+		Handler:          "builtin.create_scheduled_task_canary",
+		Platform:         "windows",
+		TimeoutSeconds:   30,
+		CleanupHandler:   "builtin.delete_scheduled_task",
+		ExpectedProvider: "windows_event_log",
+		ExpectedEventIDs: []int{106, 141},
+		RequiredFields: []string{
+			"host.name",
+			"task.name",
+			"user.name",
+		},
+	}
 
-	return Catalog{definitions: map[string]Definition{key(definition.ID, definition.Version): definition}}
+	return Catalog{definitions: map[string]Definition{
+		key(processMarker.ID, processMarker.Version):               processMarker,
+		key(registryRunKeyCanary.ID, registryRunKeyCanary.Version): registryRunKeyCanary,
+		key(scheduledTaskCanary.ID, scheduledTaskCanary.Version):   scheduledTaskCanary,
+	}}
 }
 
 func (c Catalog) Resolve(id, version string) (Definition, error) {

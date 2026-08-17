@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "status": "passed",
+  "correlation_id": "PL-0949098C4348056494B032162D504E34",
+  "scenario_id": "windows-scheduled-task-canary",
+  "scenario_version": "0.1.0",
+  "started_at": "2026-08-13T19:45:00.000Z",
+  "completed_at": "2026-08-13T19:45:00.117Z",
+  "latency_ms": 117,
+  "cleanup_status": "passed"
+}

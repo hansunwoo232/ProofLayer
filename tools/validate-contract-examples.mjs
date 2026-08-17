@@ -11,6 +11,13 @@ async function readJson(relativePath) {
 }
 
 const scenario = await readJson("examples/scenario-process-marker.json");
+const registryScenario = await readJson("examples/scenario-registry-run-key-canary.json");
+const scheduledTaskScenario = await readJson("examples/scenario-scheduled-task-canary.json");
+const runnerResults = await Promise.all([
+  readJson("examples/runner-result-process-marker.json"),
+  readJson("examples/runner-result-registry-canary.json"),
+  readJson("examples/runner-result-scheduled-task-canary.json"),
+]);
 const job = await readJson("examples/test-job.json");
 const run = await readJson("examples/test-run-parser-failure.json");
 
@@ -98,6 +105,40 @@ assert.equal(scenario.schema_version, "1.0");
 assert.match(scenario.scenario_id, scenarioIdPattern);
 assert.match(scenario.scenario_version, versionPattern);
 validateScenarioSafety(scenario);
+validateScenarioSafety(registryScenario);
+validateScenarioSafety(scheduledTaskScenario);
+
+const runnerResultFields = [
+  "cleanup_status",
+  "completed_at",
+  "correlation_id",
+  "latency_ms",
+  "scenario_id",
+  "scenario_version",
+  "schema_version",
+  "started_at",
+  "status",
+];
+for (const result of runnerResults) {
+  assert.deepEqual(
+    Object.keys(result).sort(),
+    runnerResultFields,
+    `${result.scenario_id} must use the canonical Runner result shape`,
+  );
+  assert.equal(result.schema_version, "1.0");
+  assert.equal(result.status, "passed");
+  assert.equal(result.cleanup_status, "passed");
+  assert.match(result.correlation_id, correlationPattern);
+  assert.match(result.scenario_id, scenarioIdPattern);
+  assert.match(result.scenario_version, versionPattern);
+  assert.ok(Date.parse(result.started_at) <= Date.parse(result.completed_at));
+  assert.ok(Number.isInteger(result.latency_ms) && result.latency_ms >= 0);
+}
+assert.equal(
+  new Set(runnerResults.map(({ scenario_id }) => scenario_id)).size,
+  3,
+  "Runner result comparison must cover three scenarios",
+);
 assert.ok(
   Number.isInteger(scenario.timeout_seconds) &&
     scenario.timeout_seconds >= 1 &&
@@ -167,6 +208,9 @@ for (const stage of run.stages) {
 }
 
 console.log("PASS scenario example");
+console.log("PASS registry canary scenario example");
+console.log("PASS scheduled task canary scenario example");
+console.log("PASS three versioned Runner result examples share one shape");
 console.log("PASS test job example");
 console.log("PASS parser-failure run example");
 console.log("PASS cross-contract security invariants");

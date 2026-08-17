@@ -19,6 +19,8 @@ const (
 	StatusFailed Status = "failed"
 )
 
+const ResultSchemaVersion = "1.0"
+
 const (
 	ErrorInvalidIdentity     = "invalid_identity"
 	ErrorInvalidRequest      = "invalid_request"
@@ -26,9 +28,12 @@ const (
 	ErrorUnsupportedPlatform = "unsupported_platform"
 	ErrorExecutionTimeout    = "execution_timeout"
 	ErrorExecutionFailed     = "execution_failed"
+	ErrorCleanupFailed       = "cleanup_failed"
+	ErrorArtifactRemaining   = "artifact_remaining"
 )
 
 type Result struct {
+	SchemaVersion   string    `json:"schema_version"`
 	Status          Status    `json:"status"`
 	CorrelationID   string    `json:"correlation_id"`
 	ScenarioID      string    `json:"scenario_id"`
@@ -40,14 +45,12 @@ type Result struct {
 	ErrorCode       string    `json:"error_code,omitempty"`
 }
 
-type MarkerHandler func(context.Context, string) error
-
 type Executor struct {
 	identity identity.RunnerIdentity
 	catalog  scenario.Catalog
 	recorder audit.Recorder
 	limits   policy.ExecutionLimits
-	handler  MarkerHandler
+	handlers map[string]ScenarioHandler
 	now      func() time.Time
 }
 
@@ -61,7 +64,7 @@ func New(
 		catalog:  catalog,
 		recorder: recorder,
 		limits:   policy.ApprovedProcessMarkerLimits(),
-		handler:  RunProcessMarker,
+		handlers: builtInHandlers(),
 		now:      func() time.Time { return time.Now().UTC() },
 	}
 }
@@ -69,6 +72,7 @@ func New(
 func (executor *Executor) Execute(parent context.Context, request job.ExecutionRequest) Result {
 	startedAt := executor.now()
 	result := Result{
+		SchemaVersion:   ResultSchemaVersion,
 		Status:          StatusFailed,
 		CorrelationID:   request.CorrelationID,
 		ScenarioID:      request.ScenarioID,
@@ -84,7 +88,8 @@ func (executor *Executor) Execute(parent context.Context, request job.ExecutionR
 	if err != nil {
 		return executor.finish(result, ErrorInvalidRequest)
 	}
-	if definition.Handler != "builtin.emit_process_marker" {
+	handler, ok := executor.handlers[definition.Handler]
+	if !ok {
 		return executor.finish(result, ErrorInvalidRequest)
 	}
 
@@ -98,25 +103,70 @@ func (executor *Executor) Execute(parent context.Context, request job.ExecutionR
 	}
 	defer cancel()
 
-	err = executor.handler(executionContext, request.CorrelationID)
-	if err != nil {
-		errorCode := ErrorExecutionFailed
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(executionContext.Err(), context.DeadlineExceeded) {
-			errorCode = ErrorExecutionTimeout
-		} else if errors.Is(err, ErrUnsupportedPlatform) {
-			errorCode = ErrorUnsupportedPlatform
-		}
-		if auditErr := executor.record(request, "scenario.execution", "failed", errorCode); auditErr != nil {
-			errorCode = ErrorAuditWriteFailed
-		}
-		return executor.finish(result, errorCode)
+	result.CleanupStatus = StatusFailed
+	executionErr := handler.Execute(executionContext, request.CorrelationID)
+	executionCode := executor.executionErrorCode(executionContext, executionErr)
+	executionOutcome := "passed"
+	if executionCode != "" {
+		executionOutcome = "failed"
+	}
+	if err := executor.record(request, "scenario.execution", executionOutcome, executionCode); err != nil {
+		executionCode = ErrorAuditWriteFailed
 	}
 
-	if err := executor.record(request, "scenario.execution", "passed", ""); err != nil {
-		return executor.finish(result, ErrorAuditWriteFailed)
+	cleanupCode := executor.cleanup(parent, handler, request)
+	if cleanupCode != "" {
+		return executor.finish(result, cleanupCode)
+	}
+	result.CleanupStatus = StatusPassed
+	if executionCode != "" {
+		return executor.finish(result, executionCode)
 	}
 	result.Status = StatusPassed
 	return executor.finish(result, "")
+}
+
+func (executor *Executor) executionErrorCode(executionContext context.Context, err error) string {
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(executionContext.Err(), context.DeadlineExceeded) {
+		return ErrorExecutionTimeout
+	}
+	if errors.Is(err, ErrUnsupportedPlatform) {
+		return ErrorUnsupportedPlatform
+	}
+	return ErrorExecutionFailed
+}
+
+func (executor *Executor) cleanup(parent context.Context, handler ScenarioHandler, request job.ExecutionRequest) string {
+	cleanupContext, cancel, err := executor.limits.CleanupContext(parent)
+	if err != nil {
+		return executor.recordCleanupFailure(request, ErrorCleanupFailed)
+	}
+	defer cancel()
+
+	if err := handler.Cleanup(cleanupContext, request.CorrelationID); err != nil {
+		return executor.recordCleanupFailure(request, ErrorCleanupFailed)
+	}
+	if err := handler.VerifyAbsent(cleanupContext, request.CorrelationID); err != nil {
+		errorCode := ErrorCleanupFailed
+		if errors.Is(err, ErrArtifactPresent) {
+			errorCode = ErrorArtifactRemaining
+		}
+		return executor.recordCleanupFailure(request, errorCode)
+	}
+	if err := executor.record(request, "scenario.cleanup", "passed", ""); err != nil {
+		return ErrorAuditWriteFailed
+	}
+	return ""
+}
+
+func (executor *Executor) recordCleanupFailure(request job.ExecutionRequest, errorCode string) string {
+	if err := executor.record(request, "scenario.cleanup", "failed", errorCode); err != nil {
+		return ErrorAuditWriteFailed
+	}
+	return errorCode
 }
 
 func (executor *Executor) finish(result Result, errorCode string) Result {

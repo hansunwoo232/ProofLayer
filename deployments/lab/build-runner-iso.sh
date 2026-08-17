@@ -28,10 +28,23 @@ mkdir -p "${staging_dir}" "${go_cache}"
     -trimpath \
     -o "${staging_dir}/prooflayer-runner-lab.exe" \
     ./cmd/prooflayer-runner-lab
+  GOCACHE="${go_cache}" GOOS=windows GOARCH=arm64 go build \
+    -trimpath \
+    -o "${staging_dir}/prooflayer-registry-canary-lab.exe" \
+    ./cmd/prooflayer-registry-canary-lab
+  GOCACHE="${go_cache}" GOOS=windows GOARCH=arm64 go build \
+    -trimpath \
+    -o "${staging_dir}/prooflayer-scheduled-task-canary-lab.exe" \
+    ./cmd/prooflayer-scheduled-task-canary-lab
 )
 
 cp "${script_dir}/windows/run-runner-day17.ps1" "${staging_dir}/"
-shasum -a 256 "${staging_dir}/prooflayer-runner-lab.exe" \
+cp "${script_dir}/windows/run-registry-day24.ps1" "${staging_dir}/"
+cp "${script_dir}/windows/run-scheduled-task-day25.ps1" "${staging_dir}/"
+shasum -a 256 \
+  "${staging_dir}/prooflayer-runner-lab.exe" \
+  "${staging_dir}/prooflayer-registry-canary-lab.exe" \
+  "${staging_dir}/prooflayer-scheduled-task-canary-lab.exe" \
   > "${staging_dir}/SHA256SUMS.txt"
 
 rm -f "${temporary_iso}"

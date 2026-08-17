@@ -23,6 +23,24 @@ func TestApprovedProcessMarkerLimits(t *testing.T) {
 	}
 }
 
+func TestCleanupContextSurvivesParentCancellation(t *testing.T) {
+	parent, cancelParent := context.WithCancel(context.Background())
+	cancelParent()
+
+	ctx, cancel, err := ApprovedProcessMarkerLimits().CleanupContext(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cancel()
+	if ctx.Err() != nil {
+		t.Fatalf("cleanup context inherited cancellation: %v", ctx.Err())
+	}
+	deadline, ok := ctx.Deadline()
+	if !ok || time.Until(deadline) > 10*time.Second {
+		t.Fatal("cleanup deadline not enforced")
+	}
+}
+
 func TestLimitsRejectRelaxation(t *testing.T) {
 	tests := []ExecutionLimits{
 		func() ExecutionLimits {
