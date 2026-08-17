@@ -18,9 +18,15 @@ assert.match(source, /id="run-test"[^>]*disabled/);
 assert.match(source, /role="status" aria-live="polite"/);
 assert.match(source, /fetch\("\/v1\/session"/);
 assert.match(source, /fetch\("\/v1\/test-jobs"/);
+assert.match(source, /fetch\(`\/v1\/test-jobs\/\$\{encodeURIComponent\(jobId\)\}`/);
 assert.match(source, /"Idempotency-Key": activeIdempotencyKey/);
 assert.match(source, /"X-ProofLayer-CSRF": csrfToken/);
 assert.match(source, /scenario_id: "windows-process-marker"/);
+assert.match(source, /const maximumStatusPolls = 150/);
+assert.match(source, /endpoint_event_delayed/);
+assert.match(source, /The endpoint event is taking longer than expected\./);
+assert.doesNotMatch(source, /setInterval\(/);
+assert.doesNotMatch(source, /\.innerHTML\s*=/);
 assert.doesNotMatch(source, /\b(?:command|arguments):\s*["'`]/);
 assert.doesNotMatch(source, /<script[^>]+src=/);
 assert.doesNotMatch(source, /https?:\/\/[^\s"']+\.(?:js|css)/i);
@@ -30,6 +36,17 @@ const disableBeforePost = source.indexOf("button.disabled = true", clickHandlerS
 const jobPost = source.indexOf('fetch("/v1/test-jobs"', clickHandlerStart);
 assert.ok(clickHandlerStart > 0 && disableBeforePost > clickHandlerStart && disableBeforePost < jobPost,
   "Run Test must disable synchronously before the queue request");
+
+const stageNames = [...source.matchAll(/<li class="stage" data-stage="([a-z_]+)">/g)].map((match) => match[1]);
+assert.deepEqual(stageNames, [
+  "execution",
+  "endpoint_telemetry",
+  "siem_ingestion",
+  "field_validation",
+  "detection",
+  "alert",
+  "cleanup",
+]);
 
 const dataMatch = source.match(
   /<script id="prooflayer-run" type="application\/json">\s*([\s\S]*?)\s*<\/script>/,

@@ -191,7 +191,8 @@ func TestExpiredJobCannotBeLeased(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := queue.Enqueue(testIdempotency, validRequest()); err != nil {
+	receipt, err := queue.Enqueue(testIdempotency, validRequest())
+	if err != nil {
 		t.Fatal(err)
 	}
 	now = now.Add(jobLifetime)
@@ -200,5 +201,41 @@ func TestExpiredJobCannotBeLeased(t *testing.T) {
 	}
 	if queue.Depth() != 0 {
 		t.Fatalf("expired job remained in queue")
+	}
+	snapshot, ok := queue.Status(receipt.JobID)
+	if !ok || snapshot.Status != JobStatusExpired || !snapshot.Terminal {
+		t.Fatalf("expired snapshot = %+v, exists = %v", snapshot, ok)
+	}
+}
+
+func TestExpiredLeaseCannotBeAcknowledged(t *testing.T) {
+	privateKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x25}, ed25519.SeedSize))
+	now := time.Date(2026, time.August, 17, 20, 0, 0, 0, time.UTC)
+	queue, err := New(Config{
+		Capacity:          2,
+		EnvironmentID:     testEnvironmentID,
+		HostID:            testHostID,
+		RequestedBy:       testOperatorID,
+		SigningKeyID:      "local-poc-key-01",
+		SigningPrivateKey: privateKey,
+		Now:               func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := queue.Enqueue(testIdempotency, validRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := queue.Lease(testEnvironmentID, testHostID); !ok {
+		t.Fatal("job lease failed")
+	}
+	now = now.Add(jobLifetime)
+	if err := queue.Acknowledge(testEnvironmentID, testHostID, receipt.JobID, true); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("expired acknowledgement error = %v", err)
+	}
+	snapshot, _ := queue.Status(receipt.JobID)
+	if snapshot.Status != JobStatusExpired || !snapshot.Terminal {
+		t.Fatalf("snapshot = %+v", snapshot)
 	}
 }

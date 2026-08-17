@@ -58,8 +58,23 @@ Bootstrap tokens expire within 15 minutes and cannot be reused.
 | `PUT /v1/runs/{run_id}/stages/{stage}` | Runner → Control Plane | Idempotent stage result update |
 | `POST /v1/runs/{run_id}:complete` | Runner → Control Plane | Final result and cleanup status |
 | `GET /v1/runners/{runner_id}/control` | Runner → Control Plane | Poll kill-switch and cancellation state |
+| `GET /v1/test-jobs/{job_id}` | Operator browser → Control Plane | Read one session-bound live status snapshot |
 
 The PoC uses bounded long polling. A streaming channel is explicitly deferred.
+
+## Day 28 lifecycle implementation
+
+The Control Plane now models `queued → leased → acknowledged → running →
+completed/failed` with terminal `rejected` and `expired` branches. Stage updates
+are ordered, identity-bound, latency-bounded, and limited to stable detail
+codes. Upstream failure prohibits downstream PASS results but does not skip
+cleanup. The browser receives only a read-only snapshot and cannot mutate the
+Runner lifecycle.
+
+The authenticated HTTP transport for Runner mutations remains deferred. The
+lease, acknowledgement, stage-update, and completion operations are currently
+in-process interfaces so an unauthenticated local endpoint is never introduced
+as a shortcut.
 
 ## Job authorization order
 

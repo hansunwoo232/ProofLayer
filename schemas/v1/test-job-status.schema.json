@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.prooflayer.dev/v1/test-job-status.schema.json",
+  "title": "ProofLayer Test Job Status",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "job_id",
+    "correlation_id",
+    "status",
+    "updated_at",
+    "expires_at",
+    "terminal",
+    "stages"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "job_id": { "type": "string", "format": "uuid" },
+    "correlation_id": { "type": "string", "pattern": "^PL-[A-F0-9]{32}$" },
+    "status": {
+      "enum": [
+        "queued",
+        "leased",
+        "acknowledged",
+        "running",
+        "completed",
+        "failed",
+        "rejected",
+        "expired"
+      ]
+    },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "terminal": { "type": "boolean" },
+    "stages": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "prefixItems": [
+        { "$ref": "#/$defs/execution" },
+        { "$ref": "#/$defs/endpoint_telemetry" },
+        { "$ref": "#/$defs/siem_ingestion" },
+        { "$ref": "#/$defs/field_validation" },
+        { "$ref": "#/$defs/detection" },
+        { "$ref": "#/$defs/alert" },
+        { "$ref": "#/$defs/cleanup" }
+      ],
+      "items": false
+    }
+  },
+  "$defs": {
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage", "status"],
+      "properties": {
+        "stage": { "type": "string" },
+        "status": { "enum": ["pending", "running", "passed", "failed", "not_tested"] },
+        "latency_ms": { "type": "integer", "minimum": 0, "maximum": 300000 },
+        "detail_code": {
+          "enum": [
+            "awaiting_endpoint_event",
+            "endpoint_event_delayed",
+            "endpoint_event_missing",
+            "siem_ingestion_delayed",
+            "siem_event_missing",
+            "required_field_missing",
+            "detection_result_absent",
+            "alert_delivery_delayed",
+            "cleanup_verification_failed"
+          ]
+        }
+      }
+    },
+    "execution": { "allOf": [{ "$ref": "#/$defs/stage" }, { "properties": { "stage": { "const": "execution" } } }] },
+    "endpoint_telemetry": { "allOf": [{ "$ref": "#/$defs/stage" }, { "properties": { "stage": { "const": "endpoint_telemetry" } } }] },
+    "siem_ingestion": { "allOf": [{ "$ref": "#/$defs/stage" }, { "properties": { "stage": { "const": "siem_ingestion" } } }] },
+    "field_validation": { "allOf": [{ "$ref": "#/$defs/stage" }, { "properties": { "stage": { "const": "field_validation" } } }] },
+    "detection": { "allOf": [{ "$ref": "#/$defs/stage" }, { "properties": { "stage": { "const": "detection" } } }] },
+    "alert": { "allOf": [{ "$ref": "#/$defs/stage" }, { "properties": { "stage": { "const": "alert" } } }] },
+    "cleanup": { "allOf": [{ "$ref": "#/$defs/stage" }, { "properties": { "stage": { "const": "cleanup" } } }] }
+  }
+}

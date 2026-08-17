@@ -5,7 +5,7 @@ and view the complete pipeline:
 
 `Generated → Collected → Ingested → Parsed → Detected → Alerted`
 
-## Day 27 local result surface
+## Day 28 local result surface
 
 `result-screen-wireframe.html` is a single-file, local-only product wireframe.
 It presents one synthetic parser-failure run across all seven product stages,
@@ -17,8 +17,18 @@ Opening the file directly still shows the representative result without an
 external runtime, font, image, analytics, or persistence dependency. The Run
 Test button stays unavailable in file mode.
 
-When served by the Day 27 local Control Plane at `http://127.0.0.1:8787`, the
+When served by the local Control Plane at `http://127.0.0.1:8787`, the
 button obtains a same-origin CSRF session and queues the fixed allowlisted
 process-marker job. It disables synchronously and reuses one idempotency key if
-the request must be retried. Queueing does not yet execute the Runner or replace
-the representative pipeline result.
+the request must be retried.
+
+After queue acceptance, the interface polls the session-bound status resource
+at a fixed one-second interval for no more than 150 attempts. It renders the
+canonical queued, leased, acknowledged, running, and terminal job states plus
+all seven ordered stages. Delayed endpoint, SIEM, and alert observations remain
+IN PROGRESS and explicitly say that no failure has been declared. Only stable
+bounded detail codes are converted into user-facing root-cause copy.
+
+Queueing does not execute the Runner by itself. Until authenticated outbound
+Runner transport is connected, the local view remains queued and then expires;
+it never fabricates successful stage evidence.

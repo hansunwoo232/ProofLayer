@@ -11,6 +11,7 @@ ProofLayer components.
 - `runner-execution-result.schema.json`: versioned result emitted by the Runner
 - `test-job.schema.json`: short-lived signed execution authorization
 - `test-job-receipt.schema.json`: idempotent queue acceptance response
+- `test-job-status.schema.json`: ordered live lifecycle and stage snapshot
 - `test-run.schema.json`: stage-level execution and observation result
 
 ## Validate examples

@@ -11,14 +11,28 @@ fields needed for detection, and identifies the first stage that fails.”
 
 ## Flow
 
-1. Show the fixed `windows-process-marker@0.1.0` scenario and state that it
-   accepts no command or payload.
-2. Start one run and point to its unique `PL-` correlation ID.
-3. Show execution PASS and cleanup PASS from the Runner audit.
-4. Show the exact Sysmon Event ID 1 evidence without opening the raw event.
-5. Show the exact Splunk match, ingestion latency, and field-presence result.
-6. Switch to a synthetic missing-field result and explain that downstream
-   detection and alert stages become `not_tested`, not false PASS results.
+1. **0:00–0:45 — Scope.** Show the fixed
+   `windows-process-marker@0.1.0` scenario and state that it accepts no command,
+   argument, parameter, or payload.
+2. **0:45–1:15 — Start.** Select Run Test and point to its unique `PL-`
+   correlation ID and duplicate-safe queue receipt.
+3. **1:15–2:15 — Live state.** Show queued, leased, acknowledged, and running
+   transitions. Explain that a delayed event remains IN PROGRESS within a
+   bounded window rather than becoming a premature FAIL.
+4. **2:15–3:15 — Evidence.** Show execution PASS, Sysmon Event ID 1, exact
+   Splunk correlation, and ingestion latency without opening the raw event.
+5. **3:15–4:15 — Root cause.** Show the missing-field case. Explain that
+   downstream detection and alert become NOT TESTED, not false PASS results.
+6. **4:15–5:00 — Safety and close.** Show cleanup as an independent stage,
+   state that the browser cannot send lifecycle updates, and ask the closing
+   question below.
+
+## Current rehearsal boundary
+
+The five-minute narrative and UI states are prepared for internal rehearsal.
+Do not present the local queue as a complete live demo until authenticated
+outbound Runner transport supplies the lifecycle updates. The current UI never
+fabricates PASS evidence.
 
 ## Evidence language
 

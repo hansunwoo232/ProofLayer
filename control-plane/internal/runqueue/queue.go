@@ -102,6 +102,7 @@ type Queue struct {
 	now         func() time.Time
 	jobs        []Job
 	records     map[string]idempotencyRecord
+	lifecycle   map[string]*lifecycleRecord
 }
 
 func New(config Config) (*Queue, error) {
@@ -131,6 +132,7 @@ func New(config Config) (*Queue, error) {
 		now:         now,
 		jobs:        make([]Job, 0, config.Capacity),
 		records:     make(map[string]idempotencyRecord),
+		lifecycle:   make(map[string]*lifecycleRecord),
 	}, nil
 }
 
@@ -179,6 +181,7 @@ func (queue *Queue) Enqueue(idempotencyKey string, request CreateRequest) (Recei
 		Replayed:      false,
 	}
 	queue.jobs = append(queue.jobs, job)
+	queue.lifecycle[job.JobID] = newLifecycleRecord(job)
 	queue.records[idempotencyKey] = idempotencyRecord{
 		fingerprint: fingerprint,
 		receipt:     receipt,
@@ -199,6 +202,9 @@ func (queue *Queue) Lease(environmentID, hostID string) (Job, bool) {
 			continue
 		}
 		queue.jobs = append(queue.jobs[:index], queue.jobs[index+1:]...)
+		record := queue.lifecycle[job.JobID]
+		record.Status = JobStatusLeased
+		record.UpdatedAt = queue.now().UTC()
 		return cloneJob(job), true
 	}
 	return Job{}, false
@@ -215,11 +221,28 @@ func (queue *Queue) pruneExpiredLocked(now time.Time) {
 	for _, job := range queue.jobs {
 		if now.Before(job.ExpiresAt) {
 			activeJobs = append(activeJobs, job)
+			continue
+		}
+		if record, ok := queue.lifecycle[job.JobID]; ok && !record.Terminal {
+			record.Status = JobStatusExpired
+			record.UpdatedAt = now
+			record.Terminal = true
+			markPendingNotTested(record)
 		}
 	}
 	queue.jobs = activeJobs
+	for _, record := range queue.lifecycle {
+		if !now.Before(record.Job.ExpiresAt) &&
+			(record.Status == JobStatusQueued || record.Status == JobStatusLeased) && !record.Terminal {
+			record.Status = JobStatusExpired
+			record.UpdatedAt = now
+			record.Terminal = true
+			markPendingNotTested(record)
+		}
+	}
 	for key, record := range queue.records {
 		if !now.Before(record.expiresAt) {
+			delete(queue.lifecycle, record.receipt.JobID)
 			delete(queue.records, key)
 		}
 	}

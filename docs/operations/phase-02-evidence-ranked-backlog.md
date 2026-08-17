@@ -14,7 +14,7 @@
 | 7 | P0 | Required-field validator | Parser/field stage evidence |
 | 8 | P0 | Stage state machine and failure propagation | Product-level PASS/FAIL result |
 | 9 | P0 | Cleanup and artifact-absence verifier | COMPLETE — Day 24 Registry and Day 25 Scheduled Task live proofs |
-| 10 | P1 | Minimal run API and dashboard pipeline view | IN PROGRESS — Day 27 secure queue action complete; Runner lease and live stages remain |
+| 10 | P1 | Minimal run API and dashboard pipeline view | IN PROGRESS — Day 28 live lifecycle and bounded UI updates complete; authenticated Runner transport remains |
 | 11 | P1 | Redacted JSON/HTML export | Pilot evidence package |
 | 12 | P1 | Clean-lab installer and demo runbook | Reproducible external demo |
 

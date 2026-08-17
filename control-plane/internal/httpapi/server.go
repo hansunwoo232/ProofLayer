@@ -62,6 +62,10 @@ func (server *Server) route(writer http.ResponseWriter, request *http.Request) {
 	case "/v1/test-jobs":
 		server.handleCreateJob(writer, request)
 	default:
+		if strings.HasPrefix(request.URL.Path, "/v1/test-jobs/") {
+			server.handleJobStatus(writer, request)
+			return
+		}
 		server.dashboard.ServeHTTP(writer, request)
 	}
 }
@@ -148,6 +152,31 @@ func (server *Server) handleCreateJob(writer http.ResponseWriter, request *http.
 	writeJSON(writer, status, receipt)
 }
 
+func (server *Server) handleJobStatus(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		writer.Header().Set("Allow", http.MethodGet)
+		writeError(writer, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED")
+		return
+	}
+	if !validCSRF(request) ||
+		(request.Header.Get("Sec-Fetch-Site") != "" && request.Header.Get("Sec-Fetch-Site") != "same-origin") {
+		writeError(writer, http.StatusForbidden, "REQUEST_INTEGRITY_FAILED")
+		return
+	}
+	jobID := strings.TrimPrefix(request.URL.Path, "/v1/test-jobs/")
+	if jobID == "" || strings.Contains(jobID, "/") {
+		writeError(writer, http.StatusNotFound, "JOB_NOT_FOUND")
+		return
+	}
+	status, ok := server.queue.Status(jobID)
+	if !ok {
+		writeError(writer, http.StatusNotFound, "JOB_NOT_FOUND")
+		return
+	}
+	writer.Header().Set("Cache-Control", "no-store")
+	writeJSON(writer, http.StatusOK, status)
+}
+
 func (server *Server) validOrigin(request *http.Request) bool {
 	return request.Header.Get("Origin") == server.allowedOrigin &&
 		(request.Header.Get("Sec-Fetch-Site") == "" || request.Header.Get("Sec-Fetch-Site") == "same-origin")
@@ -187,6 +216,8 @@ func (server *Server) securityHeaders(next http.Handler) http.Handler {
 		writer.Header().Set("Referrer-Policy", "no-referrer")
 		writer.Header().Set("X-Content-Type-Options", "nosniff")
 		writer.Header().Set("X-Frame-Options", "DENY")
+		writer.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
+		writer.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		next.ServeHTTP(writer, request)
 	})
 }

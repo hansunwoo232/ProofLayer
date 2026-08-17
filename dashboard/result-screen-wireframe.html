@@ -213,6 +213,16 @@
       background: var(--critical-soft);
     }
 
+    .overall.overall-active {
+      border-color: var(--line-strong);
+      background: var(--neutral-soft);
+    }
+
+    .overall.overall-passed {
+      border-color: rgba(86, 214, 160, 0.36);
+      background: var(--positive-soft);
+    }
+
     .overall-label {
       display: block;
       margin-bottom: 5px;
@@ -367,6 +377,8 @@
     .status-passed { color: var(--positive); background: var(--positive-soft); }
     .status-failed { color: var(--critical); background: var(--critical-soft); }
     .status-not-tested { color: var(--neutral); background: var(--neutral-soft); }
+    .status-pending { color: var(--neutral); background: var(--neutral-soft); }
+    .status-running { color: var(--accent); background: #28351c; }
 
     .latency {
       display: block;
@@ -415,6 +427,8 @@
       grid-template-columns: 1fr 1fr;
       gap: 12px;
     }
+
+    .field-compare[hidden] { display: none; }
 
     .field-box {
       padding: 15px;
@@ -527,15 +541,15 @@
         <section class="hero" aria-labelledby="page-title">
           <div>
             <div class="eyebrow">
-              <span class="wireframe-tag">Day 27 local PoC</span>
+              <span class="wireframe-tag">Day 28 live lifecycle</span>
               <span class="schema-tag">Result schema v1.0</span>
             </div>
             <h1 id="page-title">Windows Process Marker</h1>
-            <p class="subtitle">WIN-LAB-01 · Completed July 29, 2026 at 19:01 TRT · Synthetic demonstration data</p>
+            <p class="subtitle" id="run-subtitle">WIN-LAB-01 · Completed July 29, 2026 at 19:01 TRT · Synthetic demonstration data</p>
           </div>
-          <div class="overall" aria-label="Overall result: failed">
-            <span class="overall-label">Overall result</span>
-            <span class="overall-value"><span aria-hidden="true">×</span> Failed</span>
+          <div class="overall" id="overall-card" aria-label="Overall result: failed">
+            <span class="overall-label" id="overall-label">Overall result</span>
+            <span class="overall-value" id="overall-value"><span aria-hidden="true">×</span> Failed</span>
           </div>
         </section>
 
@@ -550,46 +564,46 @@
         <section class="panel" aria-labelledby="pipeline-title">
           <div class="panel-header">
             <h2 class="panel-title" id="pipeline-title">Detection pipeline</h2>
-            <span class="panel-note">Total observed time: 21.9 s</span>
+            <span class="panel-note" id="pipeline-note">Total observed time: 21.9 s</span>
           </div>
           <ol class="pipeline">
-            <li class="stage">
+            <li class="stage" data-stage="execution">
               <span class="stage-number">01</span>
               <h3 class="stage-name">Execution</h3>
               <span class="status status-passed"><span aria-hidden="true">✓</span> PASS</span>
               <span class="latency">812 ms</span>
             </li>
-            <li class="stage">
+            <li class="stage" data-stage="endpoint_telemetry">
               <span class="stage-number">02</span>
               <h3 class="stage-name">Endpoint telemetry</h3>
               <span class="status status-passed"><span aria-hidden="true">✓</span> PASS</span>
               <span class="latency">1,810 ms</span>
             </li>
-            <li class="stage">
+            <li class="stage" data-stage="siem_ingestion">
               <span class="stage-number">03</span>
               <h3 class="stage-name">SIEM ingestion</h3>
               <span class="status status-passed"><span aria-hidden="true">✓</span> PASS</span>
               <span class="latency">16,090 ms</span>
             </li>
-            <li class="stage">
+            <li class="stage" data-stage="field_validation">
               <span class="stage-number">04</span>
               <h3 class="stage-name">Field validation</h3>
               <span class="status status-failed"><span aria-hidden="true">×</span> FAIL</span>
               <span class="latency">80 ms</span>
             </li>
-            <li class="stage">
+            <li class="stage" data-stage="detection">
               <span class="stage-number">05</span>
               <h3 class="stage-name">Detection</h3>
               <span class="status status-not-tested"><span aria-hidden="true">—</span> NOT TESTED</span>
               <span class="latency">Blocked</span>
             </li>
-            <li class="stage">
+            <li class="stage" data-stage="alert">
               <span class="stage-number">06</span>
               <h3 class="stage-name">Alert</h3>
               <span class="status status-not-tested"><span aria-hidden="true">—</span> NOT TESTED</span>
               <span class="latency">Blocked</span>
             </li>
-            <li class="stage">
+            <li class="stage" data-stage="cleanup">
               <span class="stage-number">07</span>
               <h3 class="stage-name">Cleanup</h3>
               <span class="status status-passed"><span aria-hidden="true">✓</span> PASS</span>
@@ -600,10 +614,10 @@
 
         <div class="content-grid">
           <section class="panel root-cause" aria-labelledby="cause-title">
-            <p class="cause-kicker">Root cause · Missing required field</p>
-            <h2 class="cause-title" id="cause-title">The event arrived, but the detection could not evaluate it.</h2>
-            <p class="cause-copy">Splunk received the endpoint event. The parser did not extract <code>process.command_line</code>, so ProofLayer stopped the pipeline before detection and alert evaluation.</p>
-            <div class="field-compare">
+            <p class="cause-kicker" id="cause-kicker">Root cause · Missing required field</p>
+            <h2 class="cause-title" id="cause-title">The event arrived without a field the detection needs.</h2>
+            <p class="cause-copy" id="cause-copy">Splunk received the event, but <code>process.command_line</code> was missing. Detection and alert checks did not run.</p>
+            <div class="field-compare" id="field-compare">
               <div class="field-box">
                 <strong>Matched fields</strong>
                 <code>process.name · host.name · user.name</code>
@@ -660,6 +674,71 @@
 
       let csrfToken = "";
       let activeIdempotencyKey = "";
+      let statusPollCount = 0;
+      let statusPollTimer = 0;
+      const maximumStatusPolls = 150;
+
+      const stageLabels = Object.freeze({
+        pending: ["—", "PENDING"],
+        running: ["…", "IN PROGRESS"],
+        passed: ["✓", "PASS"],
+        failed: ["×", "FAIL"],
+        not_tested: ["—", "NOT TESTED"]
+      });
+
+      const jobLabels = Object.freeze({
+        queued: "Queued",
+        leased: "Leased",
+        acknowledged: "Validated",
+        running: "Running",
+        completed: "Passed",
+        failed: "Failed",
+        rejected: "Rejected",
+        expired: "Expired"
+      });
+
+      const detailCopy = Object.freeze({
+        endpoint_event_delayed: {
+          kicker: "Still observing · Event delayed",
+          title: "The endpoint event is taking longer than expected.",
+          copy: "ProofLayer is still waiting within the bounded observation window. No failure has been declared yet."
+        },
+        endpoint_event_missing: {
+          kicker: "Root cause · Endpoint event missing",
+          title: "The safe behavior ran, but endpoint telemetry was not found.",
+          copy: "ProofLayer stopped before SIEM evaluation because the expected endpoint event did not arrive."
+        },
+        siem_ingestion_delayed: {
+          kicker: "Still observing · SIEM ingestion delayed",
+          title: "The endpoint event exists, but it has not reached the SIEM yet.",
+          copy: "ProofLayer is continuing its bounded ingestion check before declaring a failure."
+        },
+        siem_event_missing: {
+          kicker: "Root cause · SIEM event missing",
+          title: "Endpoint telemetry was created, but the SIEM did not receive it.",
+          copy: "Collection or forwarding should be checked before detection rules are evaluated."
+        },
+        required_field_missing: {
+          kicker: "Root cause · Missing required field",
+          title: "The event arrived without a field the detection needs.",
+          copy: "The SIEM received the event, but field validation failed. Detection and alert checks did not run."
+        },
+        detection_result_absent: {
+          kicker: "Root cause · Detection absent",
+          title: "The required telemetry was present, but the detection did not match.",
+          copy: "Review the detection logic, field mapping, and search window before retesting."
+        },
+        alert_delivery_delayed: {
+          kicker: "Still observing · Alert delayed",
+          title: "The detection matched, but the alert has not arrived yet.",
+          copy: "ProofLayer is waiting within the bounded alert-delivery window."
+        },
+        cleanup_verification_failed: {
+          kicker: "Root cause · Cleanup failed",
+          title: "The test artifact could not be proven absent.",
+          copy: "Treat this run as failed and follow the recovery procedure before another test."
+        }
+      });
 
       function createIdempotencyKey() {
         const bytes = crypto.getRandomValues(new Uint8Array(24));
@@ -688,6 +767,111 @@
         }
       }
 
+      function formatLatency(stage) {
+        if (stage.status === "pending") return "Waiting";
+        if (stage.status === "running") return "Observing";
+        if (stage.status === "not_tested") return "Blocked";
+        return Number.isInteger(stage.latency_ms) ? `${stage.latency_ms.toLocaleString()} ms` : "Complete";
+      }
+
+      function setIconLabel(element, icon, label) {
+        const symbol = document.createElement("span");
+        symbol.setAttribute("aria-hidden", "true");
+        symbol.textContent = icon;
+        element.replaceChildren(symbol, document.createTextNode(` ${label}`));
+      }
+
+      function renderSnapshot(snapshot) {
+        for (const stage of snapshot.stages) {
+          const element = document.querySelector(`[data-stage="${stage.stage}"]`);
+          const label = stageLabels[stage.status];
+          if (!element || !label) continue;
+          const statusElement = element.querySelector(".status");
+          statusElement.className = `status status-${stage.status.replaceAll("_", "-")}`;
+          setIconLabel(statusElement, label[0], label[1]);
+          element.querySelector(".latency").textContent = formatLatency(stage);
+        }
+
+        const totalLatency = snapshot.stages.reduce((sum, stage) => sum + (stage.latency_ms || 0), 0);
+        document.querySelector("#pipeline-note").textContent = snapshot.terminal
+          ? `Total observed time: ${(totalLatency / 1000).toFixed(1)} s`
+          : "Live evidence · updates every second";
+        document.querySelector("#run-subtitle").textContent = `WIN-LAB-01 · ${jobLabels[snapshot.status] || "Updating"} · ${snapshot.correlation_id.slice(0, 11)}…${snapshot.correlation_id.slice(-6)}`;
+
+        const detail = snapshot.stages.find(stage => detailCopy[stage.detail_code]);
+        document.querySelector("#field-compare").hidden = !detail || detail.detail_code !== "required_field_missing";
+        if (detail) {
+          const copy = detailCopy[detail.detail_code];
+          document.querySelector("#cause-kicker").textContent = copy.kicker;
+          document.querySelector("#cause-title").textContent = copy.title;
+          document.querySelector("#cause-copy").textContent = copy.copy;
+        } else if (!snapshot.terminal) {
+          document.querySelector("#cause-kicker").textContent = "Live run · No failure identified";
+          document.querySelector("#cause-title").textContent = "ProofLayer is following the test through the pipeline.";
+          document.querySelector("#cause-copy").textContent = "This view updates as bounded stage evidence arrives from the Runner workflow.";
+        } else if (snapshot.status === "completed") {
+          document.querySelector("#cause-kicker").textContent = "Run complete · Evidence observed";
+          document.querySelector("#cause-title").textContent = "Every tested stage produced its expected evidence.";
+          document.querySelector("#cause-copy").textContent = "Cleanup also passed. This result describes the tested detection path, not the security of the whole environment.";
+        } else if (snapshot.status === "expired") {
+          document.querySelector("#cause-kicker").textContent = "Run expired · No execution evidence";
+          document.querySelector("#cause-title").textContent = "The Runner did not lease the job before authorization expired.";
+          document.querySelector("#cause-copy").textContent = "No test was executed. Check Runner connectivity before creating a new job.";
+        } else if (snapshot.status === "rejected") {
+          document.querySelector("#cause-kicker").textContent = "Run rejected · Validation stopped";
+          document.querySelector("#cause-title").textContent = "The Runner rejected the job before execution.";
+          document.querySelector("#cause-copy").textContent = "No test was executed. Review identity, signature, expiry, and local policy evidence.";
+        }
+
+        const overallCard = document.querySelector("#overall-card");
+        const overallLabel = document.querySelector("#overall-label");
+        const overallValue = document.querySelector("#overall-value");
+        overallCard.classList.remove("overall-active", "overall-passed");
+        if (!snapshot.terminal) {
+          overallCard.classList.add("overall-active");
+          overallLabel.textContent = "Live run";
+          setIconLabel(overallValue, "…", jobLabels[snapshot.status] || "In progress");
+        } else if (snapshot.status === "completed") {
+          overallCard.classList.add("overall-passed");
+          overallLabel.textContent = "Overall result";
+          setIconLabel(overallValue, "✓", "Passed");
+        } else {
+          overallLabel.textContent = "Overall result";
+          setIconLabel(overallValue, "×", jobLabels[snapshot.status] || "Stopped");
+        }
+        overallCard.setAttribute("aria-label", `${overallLabel.textContent}: ${snapshot.status}`);
+      }
+
+      async function pollJobStatus(jobId) {
+        if (statusPollCount >= maximumStatusPolls) {
+          status.textContent = "Live updates paused after the bounded observation window.";
+          button.textContent = "Status paused";
+          return;
+        }
+        statusPollCount += 1;
+        try {
+          const response = await fetch(`/v1/test-jobs/${encodeURIComponent(jobId)}`, {
+            credentials: "same-origin",
+            cache: "no-store",
+            headers: { "X-ProofLayer-CSRF": csrfToken }
+          });
+          if (!response.ok) throw new Error("status unavailable");
+          const snapshot = await response.json();
+          renderSnapshot(snapshot);
+          status.textContent = `${jobLabels[snapshot.status] || "Updating"} · ${snapshot.correlation_id.slice(0, 11)}…${snapshot.correlation_id.slice(-6)}`;
+          if (snapshot.terminal) {
+            button.disabled = false;
+            button.textContent = "Run Test Again";
+            activeIdempotencyKey = "";
+            statusPollCount = 0;
+            return;
+          }
+        } catch {
+          status.textContent = "Live status is temporarily unavailable. Retrying safely…";
+        }
+        statusPollTimer = window.setTimeout(() => pollJobStatus(jobId), 1000);
+      }
+
       button.addEventListener("click", async () => {
         button.disabled = true;
         button.textContent = "Queuing…";
@@ -712,6 +896,9 @@
           const shortCorrelation = `${receipt.correlation_id.slice(0, 11)}…${receipt.correlation_id.slice(-6)}`;
           button.textContent = "Test queued";
           status.textContent = `${receipt.replayed ? "Existing request confirmed" : "Queued"} · ${shortCorrelation} · awaiting Runner lease`;
+          window.clearTimeout(statusPollTimer);
+          statusPollCount = 0;
+          pollJobStatus(receipt.job_id);
         } catch {
           button.disabled = false;
           button.textContent = "Retry Run Test";

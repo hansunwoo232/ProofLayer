@@ -86,6 +86,18 @@ func postJob(handler http.Handler, body, idempotency, origin string, cookie *htt
 	return response
 }
 
+func getJobStatus(handler http.Handler, jobID string, cookie *http.Cookie, csrf string) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(http.MethodGet, "/v1/test-jobs/"+jobID, nil)
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+	request.Header.Set("X-ProofLayer-CSRF", csrf)
+	if cookie != nil {
+		request.AddCookie(cookie)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
+
 func TestSessionAndCreateJob(t *testing.T) {
 	server, queue := newTestServer(t)
 	handler := server.Handler()
@@ -186,6 +198,57 @@ func TestStaticWireframeIsServedWithSecurityHeaders(t *testing.T) {
 	}
 	if response.Header().Get("Content-Security-Policy") == "" {
 		t.Fatal("content security policy missing")
+	}
+}
+
+func TestJobStatusShowsLiveDelayedStage(t *testing.T) {
+	server, queue := newTestServer(t)
+	handler := server.Handler()
+	cookie, token := session(t, handler)
+	created := postJob(handler, validBody(), testIdempotency, testOrigin, cookie, token)
+	var receipt runqueue.Receipt
+	if err := json.Unmarshal(created.Body.Bytes(), &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := queue.Lease(testEnvironmentID, testHostID); !ok {
+		t.Fatal("job lease failed")
+	}
+	if err := queue.Acknowledge(testEnvironmentID, testHostID, receipt.JobID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.UpdateStage(testEnvironmentID, testHostID, receipt.JobID, runqueue.StageUpdate{
+		Stage: "execution", Status: runqueue.StageStatusPassed, LatencyMS: 74,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.UpdateStage(testEnvironmentID, testHostID, receipt.JobID, runqueue.StageUpdate{
+		Stage: "endpoint_telemetry", Status: runqueue.StageStatusRunning, DetailCode: "endpoint_event_delayed",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	response := getJobStatus(handler, receipt.JobID, cookie, token)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status response = %d, body = %s", response.Code, response.Body.String())
+	}
+	var snapshot runqueue.StatusSnapshot
+	if err := json.Unmarshal(response.Body.Bytes(), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Status != runqueue.JobStatusRunning || snapshot.Terminal {
+		t.Fatalf("snapshot = %+v", snapshot)
+	}
+	if snapshot.Stages[0].Status != runqueue.StageStatusPassed ||
+		snapshot.Stages[1].Status != runqueue.StageStatusRunning ||
+		snapshot.Stages[1].DetailCode != "endpoint_event_delayed" {
+		t.Fatalf("stages = %+v", snapshot.Stages[:2])
+	}
+
+	if response := getJobStatus(handler, receipt.JobID, cookie, "wrong-token-with-more-than-thirty-two-characters"); response.Code != http.StatusForbidden {
+		t.Fatalf("invalid status session = %d", response.Code)
+	}
+	if response := getJobStatus(handler, "00000000-0000-4000-8000-000000000000", cookie, token); response.Code != http.StatusNotFound {
+		t.Fatalf("unknown job status = %d", response.Code)
 	}
 }
 

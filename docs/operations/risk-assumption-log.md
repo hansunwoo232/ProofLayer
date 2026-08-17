@@ -17,6 +17,7 @@ and whenever a risk changes status.
 | R-008 | The local Splunk management endpoint uses its generated self-signed certificate and CLI hostname validation is disabled. | High | Medium | Keep the endpoint loopback-only for the PoC. Require trusted certificates and hostname verification before any shared or customer environment. | Security | Mitigating |
 | R-009 | In-place manipulation of Splunk's internal password files can leave the 10.4 sidecar-based container with no local users. | Low | Medium | Never edit the password database in place. Preserve affected volumes, rotate to fresh explicitly named lab volumes, and recreate synthetic-only test data. | Engineering | Mitigated |
 | R-010 | QEMU's direct TCP `guestfwd` can accept the guest connection without relaying payload bytes to a Docker-published loopback port on this macOS host. | Medium | Medium | Use QEMU's command-backed `guestfwd` with fixed `/usr/bin/nc 127.0.0.1 8088`; keep `restrict=on`; verify HEC health before every proof. | Engineering | Mitigated |
+| R-011 | The local Control Plane queue, lifecycle state, and signing key are lost on restart. | High | Medium | Treat the process as a local PoC, show interrupted runs as unavailable, and add durable state plus managed key storage before a shared environment. | Engineering | Open |
 
 ## Assumptions
 
