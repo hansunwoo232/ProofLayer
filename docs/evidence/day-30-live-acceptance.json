@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0",
+  "job_id": "d6ab8e1c-9350-4c7f-bd81-e566e4e98eb8",
+  "correlation_id": "PL-07A96D50873BDB451BBB69DFD26A97C6",
+  "status": "completed",
+  "updated_at": "2026-08-18T21:17:17.34652Z",
+  "terminal": true,
+  "stages": [
+    {
+      "stage": "execution",
+      "status": "passed",
+      "latency_ms": 297
+    },
+    {
+      "stage": "endpoint_telemetry",
+      "status": "passed",
+      "latency_ms": 1495
+    },
+    {
+      "stage": "siem_ingestion",
+      "status": "passed",
+      "latency_ms": 1376
+    },
+    {
+      "stage": "field_validation",
+      "status": "passed",
+      "latency_ms": 0
+    },
+    {
+      "stage": "detection",
+      "status": "passed",
+      "latency_ms": 87
+    },
+    {
+      "stage": "alert",
+      "status": "not_tested",
+      "latency_ms": 0
+    },
+    {
+      "stage": "cleanup",
+      "status": "passed",
+      "latency_ms": 0
+    }
+  ]
+}

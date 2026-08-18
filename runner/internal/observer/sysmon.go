@@ -103,7 +103,7 @@ func (observer *SysmonObserver) Observe(
 			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 				return Evidence{}, ErrEventNotFound
 			}
-			return Evidence{}, fmt.Errorf("%w: source_query", ErrObservationFailed)
+			return Evidence{}, fmt.Errorf("%w: %w", ErrObservationFailed, err)
 		}
 		for _, event := range events {
 			if event.Provider != "Microsoft-Windows-Sysmon" || event.EventID != 1 {

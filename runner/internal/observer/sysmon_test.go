@@ -3,6 +3,7 @@ package observer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -90,7 +91,7 @@ func TestObserveRejectsInvalidCorrelationBeforeQuery(t *testing.T) {
 }
 
 func TestObserveDoesNotRetrySourceFailure(t *testing.T) {
-	source := &sequenceSource{err: errors.New("access denied")}
+	source := &sequenceSource{err: fmt.Errorf("%w: command", ErrWindowsEventQuery)}
 	observer, err := NewSysmonObserver(source, testPolicy())
 	if err != nil {
 		t.Fatal(err)
@@ -98,6 +99,9 @@ func TestObserveDoesNotRetrySourceFailure(t *testing.T) {
 	_, err = observer.Observe(context.Background(), testCorrelationID, time.Now().UTC())
 	if !errors.Is(err, ErrObservationFailed) {
 		t.Fatalf("error = %v", err)
+	}
+	if !errors.Is(err, ErrWindowsEventQuery) {
+		t.Fatalf("source classification was lost: %v", err)
 	}
 	if source.calls != 1 {
 		t.Fatalf("query attempts = %d, want 1", source.calls)

@@ -127,10 +127,11 @@ func (worker *Worker) RunOnce(ctx context.Context) (Result, error) {
 	}
 	endpointEvidence, err := worker.endpoint.Observe(ctx, leased.CorrelationID, execution.StartedAt)
 	if err != nil {
-		if updateErr := worker.stage(ctx, leased.JobID, "endpoint_telemetry", "failed", elapsedMS(execution.StartedAt, worker.now()), "endpoint_event_missing"); updateErr != nil {
+		detailCode := endpointFailureCode(err)
+		if updateErr := worker.stage(ctx, leased.JobID, "endpoint_telemetry", "failed", elapsedMS(execution.StartedAt, worker.now()), detailCode); updateErr != nil {
 			return result, updateErr
 		}
-		result.ErrorCode = "endpoint_event_missing"
+		result.ErrorCode = endpointResultCode(err)
 		if finishErr := worker.finishFailed(ctx, leased.JobID, 1, execution); finishErr != nil {
 			return result, finishErr
 		}
@@ -206,6 +207,38 @@ func (worker *Worker) RunOnce(ctx context.Context) (Result, error) {
 	}
 	result.Status = "completed"
 	return result, nil
+}
+
+func endpointFailureCode(err error) string {
+	switch {
+	case errors.Is(err, observer.ErrEventNotFound):
+		return "endpoint_event_missing"
+	case errors.Is(err, observer.ErrEvidenceLimit):
+		return "endpoint_evidence_limit"
+	case errors.Is(err, observer.ErrWindowsEventQuery):
+		return "endpoint_query_failed"
+	case errors.Is(err, observer.ErrWindowsEventXML):
+		return "endpoint_xml_invalid"
+	default:
+		return "endpoint_observer_failed"
+	}
+}
+
+func endpointResultCode(err error) string {
+	switch {
+	case errors.Is(err, observer.ErrWindowsEventEncoding):
+		return "endpoint_xml_encoding_invalid"
+	case errors.Is(err, observer.ErrWindowsEventDeclaration):
+		return "endpoint_xml_declaration_invalid"
+	case errors.Is(err, observer.ErrWindowsEventDocument):
+		return "endpoint_xml_document_missing"
+	case errors.Is(err, observer.ErrWindowsEventRecord):
+		return "endpoint_xml_records_invalid"
+	case errors.Is(err, observer.ErrWindowsEventTimestamp):
+		return "endpoint_xml_timestamps_invalid"
+	default:
+		return endpointFailureCode(err)
+	}
 }
 
 func (worker *Worker) failSIEM(ctx context.Context, result Result, jobID string, execution executor.Result) (Result, error) {

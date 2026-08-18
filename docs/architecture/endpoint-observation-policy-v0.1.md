@@ -20,6 +20,7 @@
 | Poll interval | 500 ms |
 | Maximum attempts | 30 |
 | Windows query lookback | 60 seconds maximum |
+| Windows query minimum | 10 seconds |
 | Events per query | 50 maximum |
 | Local XML buffer | 512 KiB maximum |
 
@@ -27,6 +28,10 @@ The policy may be made stricter but cannot be relaxed by a scenario. A valid
 empty query is retried. Access denial, malformed XML, evidence overflow, or a
 source failure stops immediately. Deadline or exhausted attempts produces the
 stable `endpoint_event_not_found` outcome.
+
+The query window is intentionally wider than the evidence acceptance window.
+This accommodates delayed channel publication without accepting an event older
+than execution start minus two seconds.
 
 ## Metadata boundary
 

@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -135,6 +136,53 @@ func TestRunOnceStopsAfterMissingEndpointAndStillCompletesCleanup(t *testing.T) 
 	got := updateSequence(cp.updates)
 	if !equalStrings(got[len(got)-len(wantTail):], wantTail) {
 		t.Fatalf("updates = %v", got)
+	}
+}
+
+func TestRunOnceClassifiesEndpointObserverFailures(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		code string
+	}{
+		{name: "missing", err: observer.ErrEventNotFound, code: "endpoint_event_missing"},
+		{name: "limit", err: observer.ErrEvidenceLimit, code: "endpoint_evidence_limit"},
+		{name: "query", err: observer.ErrWindowsEventQuery, code: "endpoint_query_failed"},
+		{name: "xml", err: observer.ErrWindowsEventXML, code: "endpoint_xml_invalid"},
+		{name: "unknown", err: errors.New("unknown"), code: "endpoint_observer_failed"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cp, exec, endpoint, exporter, siem := baseDependencies()
+			endpoint.err = test.err
+			value, _ := New(cp, exec, endpoint, exporter, siem)
+			result, err := value.RunOnce(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.ErrorCode != test.code {
+				t.Fatalf("error code = %q, want %q", result.ErrorCode, test.code)
+			}
+			if cp.updates[3].DetailCode != test.code {
+				t.Fatalf("detail code = %q, want %q", cp.updates[3].DetailCode, test.code)
+			}
+		})
+	}
+}
+
+func TestRunOnceKeepsDetailedXMLDiagnosisLocal(t *testing.T) {
+	cp, exec, endpoint, exporter, siem := baseDependencies()
+	endpoint.err = fmt.Errorf("%w: %w", observer.ErrWindowsEventXML, observer.ErrWindowsEventRecord)
+	value, _ := New(cp, exec, endpoint, exporter, siem)
+	result, err := value.RunOnce(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ErrorCode != "endpoint_xml_records_invalid" {
+		t.Fatalf("error code = %q", result.ErrorCode)
+	}
+	if cp.updates[3].DetailCode != "endpoint_xml_invalid" {
+		t.Fatalf("central detail code = %q", cp.updates[3].DetailCode)
 	}
 }
 

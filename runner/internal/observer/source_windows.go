@@ -5,12 +5,10 @@ package observer
 import (
 	"bytes"
 	"context"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"os/exec"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -18,8 +16,6 @@ const (
 	sysmonChannel   = "Microsoft-Windows-Sysmon/Operational"
 	maximumXMLBytes = 512 * 1024
 )
-
-var ErrEvidenceLimit = errors.New("Windows event evidence exceeded the local limit")
 
 type WindowsEventSource struct{}
 
@@ -29,8 +25,11 @@ func NewWindowsEventSource() *WindowsEventSource {
 
 func (*WindowsEventSource) RecentProcessEvents(ctx context.Context, since time.Time) ([]Event, error) {
 	lookback := time.Since(since).Round(time.Millisecond) + 2*time.Second
-	if lookback < 2*time.Second {
-		lookback = 2 * time.Second
+	// Keep the query wider than the evidence acceptance window. Sysmon can
+	// publish shortly after the process exits, while the observer still rejects
+	// events older than execution start minus two seconds.
+	if lookback < 10*time.Second {
+		lookback = 10 * time.Second
 	}
 	if lookback > time.Minute {
 		lookback = time.Minute
@@ -47,42 +46,24 @@ func (*WindowsEventSource) RecentProcessEvents(ctx context.Context, since time.T
 		"/rd:true",
 		"/c:50",
 		"/f:xml",
+		"/uni:true",
 	)
 	var output cappedBuffer
 	output.maximum = maximumXMLBytes
+	var stderr cappedBuffer
+	stderr.maximum = 4096
 	command.Stdout = &output
-	command.Stderr = &cappedBuffer{maximum: 4096}
+	command.Stderr = &stderr
 	if err := command.Run(); err != nil {
 		if errors.Is(output.err, ErrEvidenceLimit) {
 			return nil, ErrEvidenceLimit
 		}
-		return nil, fmt.Errorf("query Sysmon channel: %w", err)
+		return nil, fmt.Errorf("%w: command", ErrWindowsEventQuery)
 	}
 
-	payload := strings.ReplaceAll(output.String(), `<?xml version="1.0" encoding="utf-8" standalone="yes"?>`, "")
-	payload = "<Events>" + payload + "</Events>"
-	var envelope xmlEnvelope
-	if err := xml.Unmarshal([]byte(payload), &envelope); err != nil {
-		return nil, fmt.Errorf("parse Sysmon XML: %w", err)
-	}
-
-	events := make([]Event, 0, len(envelope.Events))
-	for _, parsed := range envelope.Events {
-		createdAt, err := time.Parse(time.RFC3339Nano, parsed.System.TimeCreated.SystemTime)
-		if err != nil {
-			continue
-		}
-		values := make([]string, 0, len(parsed.EventData))
-		for _, data := range parsed.EventData {
-			values = append(values, data.Value)
-		}
-		events = append(events, Event{
-			Provider:       parsed.System.Provider.Name,
-			EventID:        parsed.System.EventID,
-			RecordID:       parsed.System.RecordID,
-			TimeCreatedUTC: createdAt.UTC(),
-			DataValues:     values,
-		})
+	events, err := parseWindowsEventXML(output.Bytes())
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrWindowsEventXML, err)
 	}
 	return events, nil
 }
@@ -105,22 +86,6 @@ func (buffer *cappedBuffer) String() string {
 	return buffer.buffer.String()
 }
 
-type xmlEnvelope struct {
-	Events []xmlEvent `xml:"Event"`
-}
-
-type xmlEvent struct {
-	System struct {
-		Provider struct {
-			Name string `xml:"Name,attr"`
-		} `xml:"Provider"`
-		EventID     int    `xml:"EventID"`
-		RecordID    uint64 `xml:"EventRecordID"`
-		TimeCreated struct {
-			SystemTime string `xml:"SystemTime,attr"`
-		} `xml:"TimeCreated"`
-	} `xml:"System"`
-	EventData []struct {
-		Value string `xml:",chardata"`
-	} `xml:"EventData>Data"`
+func (buffer *cappedBuffer) Bytes() []byte {
+	return buffer.buffer.Bytes()
 }

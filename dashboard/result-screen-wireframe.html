@@ -708,6 +708,26 @@
           title: "The safe behavior ran, but endpoint telemetry was not found.",
           copy: "ProofLayer stopped before SIEM evaluation because the expected endpoint event did not arrive."
         },
+        endpoint_evidence_limit: {
+          kicker: "Root cause · Evidence limit reached",
+          title: "The local endpoint evidence exceeded the approved safety limit.",
+          copy: "ProofLayer stopped the bounded collection before any endpoint data left the host. Narrow the local query and retest."
+        },
+        endpoint_query_failed: {
+          kicker: "Root cause · Endpoint query failed",
+          title: "ProofLayer could not query the approved Sysmon event channel.",
+          copy: "Check the local event channel and Runner permissions. No raw event content was exported."
+        },
+        endpoint_xml_invalid: {
+          kicker: "Root cause · Endpoint XML invalid",
+          title: "The local Sysmon response could not be parsed safely.",
+          copy: "ProofLayer rejected the local response before SIEM export because it did not match the approved event format."
+        },
+        endpoint_observer_failed: {
+          kicker: "Root cause · Endpoint observer failed",
+          title: "The bounded endpoint observation step could not complete.",
+          copy: "Review the local Runner diagnostics and retest. No raw endpoint event content was exported."
+        },
         siem_ingestion_delayed: {
           kicker: "Still observing · SIEM ingestion delayed",
           title: "The endpoint event exists, but it has not reached the SIEM yet.",

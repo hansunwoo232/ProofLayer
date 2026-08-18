@@ -1,8 +1,8 @@
 # Day 30 PoC Architecture and Known Limitations
 
-**Status:** Implemented; live Windows acceptance evidence pending
+**Status:** Implemented; live Windows acceptance passed
 
-**Date:** August 18, 2026
+**Date:** August 19, 2026
 
 ## One-action path
 
@@ -54,3 +54,9 @@
 
 These limits are acceptable for the technical PoC and are not acceptable for
 a customer or production deployment.
+
+## Acceptance reference
+
+The terminal live result, bounded JSON evidence, Runner screenshot, resolved
+Windows Unicode defect, and validation commands are recorded in
+[`docs/day-30-completion-report.md`](../day-30-completion-report.md).
