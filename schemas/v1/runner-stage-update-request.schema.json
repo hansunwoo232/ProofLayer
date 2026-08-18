@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.prooflayer.dev/v1/runner-stage-update-request.schema.json",
+  "title": "ProofLayer Runner Stage Update Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "status", "latency_ms"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "status": { "enum": ["running", "passed", "failed", "not_tested"] },
+    "latency_ms": { "type": "integer", "minimum": 0, "maximum": 300000 },
+    "detail_code": {
+      "enum": [
+        "awaiting_endpoint_event",
+        "endpoint_event_delayed",
+        "endpoint_event_missing",
+        "siem_ingestion_delayed",
+        "siem_event_missing",
+        "required_field_missing",
+        "detection_result_absent",
+        "alert_delivery_delayed",
+        "cleanup_verification_failed"
+      ]
+    }
+  }
+}

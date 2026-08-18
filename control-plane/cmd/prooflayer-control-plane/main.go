@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/base64"
 	"errors"
 	"log"
 	"net/http"
@@ -22,7 +23,9 @@ const (
 
 	localEnvironmentID = "6ba7b810-9dad-41d1-80b4-00c04fd430c8"
 	localHostID        = "6ba7b811-9dad-41d1-80b4-00c04fd430c8"
+	localRunnerID      = "6ba7b812-9dad-41d1-80b4-00c04fd430c8"
 	localOperatorID    = "7ba7b811-9dad-41d1-80b4-00c04fd430c8"
+	localSigningKeyID  = "local-poc-ephemeral"
 )
 
 func main() {
@@ -36,7 +39,7 @@ func main() {
 		EnvironmentID:     localEnvironmentID,
 		HostID:            localHostID,
 		RequestedBy:       localOperatorID,
-		SigningKeyID:      "local-poc-ephemeral",
+		SigningKeyID:      localSigningKeyID,
 		SigningPrivateKey: privateKey,
 	})
 	if err != nil {
@@ -47,9 +50,27 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	api, err := httpapi.New(queue, localOrigin, dashboard)
+	runnerToken := os.Getenv("PROOFLAYER_RUNNER_TOKEN")
+	var api *httpapi.Server
+	if runnerToken == "" {
+		api, err = httpapi.New(queue, localOrigin, dashboard)
+	} else {
+		api, err = httpapi.NewWithRunner(queue, localOrigin, dashboard, httpapi.RunnerBinding{
+			RunnerID:      localRunnerID,
+			EnvironmentID: localEnvironmentID,
+			HostID:        localHostID,
+			BearerToken:   runnerToken,
+		})
+	}
 	if err != nil {
 		log.Fatal("create local HTTP API: ", err)
+	}
+	if runnerToken == "" {
+		log.Print("Runner transport disabled: PROOFLAYER_RUNNER_TOKEN is not set")
+	} else {
+		publicKey := privateKey.Public().(ed25519.PublicKey)
+		log.Printf("Runner transport enabled for %s", localRunnerID)
+		log.Printf("Runner signing key %s public key: %s", localSigningKeyID, base64.RawURLEncoding.EncodeToString(publicKey))
 	}
 
 	server := &http.Server{

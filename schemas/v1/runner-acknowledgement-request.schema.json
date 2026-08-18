@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.prooflayer.dev/v1/runner-acknowledgement-request.schema.json",
+  "title": "ProofLayer Runner Job Acknowledgement Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "accepted"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "accepted": { "type": "boolean" }
+  }
+}

@@ -15,6 +15,8 @@ PowerShell text, executable content, or an unknown scenario handler.
 - The Runner initiates every connection to the Control Plane.
 - Production transport is HTTPS with mutual TLS.
 - A client certificate identifies one organization, environment, and host.
+- The local PoC may use one identity-bound bearer credential only while both
+  endpoints are on loopback. Plain HTTP to a non-loopback address is rejected.
 - JSON payloads use `Content-Type: application/json` and the versioned schemas
   in `schemas/v1/`.
 - All timestamps are RFC 3339 UTC.
@@ -53,10 +55,9 @@ Bootstrap tokens expire within 15 minutes and cannot be reused.
 | `POST /v1/runners/register` | Runner → Control Plane | One-time host registration |
 | `POST /v1/runners/{runner_id}/heartbeat` | Runner → Control Plane | Health, version, and policy state |
 | `POST /v1/runners/{runner_id}/jobs:lease` | Runner → Control Plane | Long-poll for one eligible job |
-| `POST /v1/jobs/{job_id}:ack` | Runner → Control Plane | Accept or reject the leased job |
-| `POST /v1/runs` | Runner → Control Plane | Declare execution start |
-| `PUT /v1/runs/{run_id}/stages/{stage}` | Runner → Control Plane | Idempotent stage result update |
-| `POST /v1/runs/{run_id}:complete` | Runner → Control Plane | Final result and cleanup status |
+| `POST /v1/runners/{runner_id}/jobs/{job_id}:ack` | Runner → Control Plane | Accept or reject the leased job |
+| `PUT /v1/runners/{runner_id}/jobs/{job_id}/stages/{stage}` | Runner → Control Plane | Idempotent stage result update |
+| `POST /v1/runners/{runner_id}/jobs/{job_id}:complete` | Runner → Control Plane | Final result and cleanup status |
 | `GET /v1/runners/{runner_id}/control` | Runner → Control Plane | Poll kill-switch and cancellation state |
 | `GET /v1/test-jobs/{job_id}` | Operator browser → Control Plane | Read one session-bound live status snapshot |
 
@@ -71,10 +72,24 @@ codes. Upstream failure prohibits downstream PASS results but does not skip
 cleanup. The browser receives only a read-only snapshot and cannot mutate the
 Runner lifecycle.
 
-The authenticated HTTP transport for Runner mutations remains deferred. The
-lease, acknowledgement, stage-update, and completion operations are currently
-in-process interfaces so an unauthenticated local endpoint is never introduced
-as a shortcut.
+## Day 29 transport implementation
+
+The local Control Plane exposes lease, acknowledgement, ordered stage-update,
+and completion routes only when an explicit Runner binding is configured. One
+bearer credential is bound server-side to a canonical Runner, environment, and
+host identity and is compared in constant time before a lease can change queue
+state. Missing, wrong, and cross-Runner credentials fail before job lookup.
+
+The outbound Runner client accepts plain HTTP only for an IP loopback endpoint;
+all other endpoints require HTTPS. It uses bounded requests, strict JSON,
+response-size limits, and a fixed request model. A leased job must pass local
+Ed25519 verification, identity and expiry checks, built-in scenario resolution,
+empty-parameter enforcement, and in-memory nonce replay protection before it
+can become an execution request.
+
+This is a PoC transport boundary, not the production identity design. mTLS,
+certificate registration and rotation, durable nonce state, bounded retry, and
+Windows worker orchestration remain required before customer deployment.
 
 ## Job authorization order
 

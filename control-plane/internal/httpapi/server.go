@@ -26,9 +26,34 @@ type Server struct {
 	allowedOrigin string
 	dashboard     http.Handler
 	csrfToken     func() (string, error)
+	runner        *RunnerBinding
 }
 
 func New(queue *runqueue.Queue, allowedOrigin, dashboardDirectory string) (*Server, error) {
+	return newServer(queue, allowedOrigin, dashboardDirectory, nil)
+}
+
+func NewWithRunner(
+	queue *runqueue.Queue,
+	allowedOrigin,
+	dashboardDirectory string,
+	runner RunnerBinding,
+) (*Server, error) {
+	if err := runner.validate(); err != nil {
+		return nil, err
+	}
+	runner.EnvironmentID = strings.ToLower(runner.EnvironmentID)
+	runner.HostID = strings.ToLower(runner.HostID)
+	runner.RunnerID = strings.ToLower(runner.RunnerID)
+	return newServer(queue, allowedOrigin, dashboardDirectory, &runner)
+}
+
+func newServer(
+	queue *runqueue.Queue,
+	allowedOrigin,
+	dashboardDirectory string,
+	runner *RunnerBinding,
+) (*Server, error) {
 	if queue == nil {
 		return nil, errors.New("job queue is required")
 	}
@@ -46,6 +71,7 @@ func New(queue *runqueue.Queue, allowedOrigin, dashboardDirectory string) (*Serv
 		allowedOrigin: allowedOrigin,
 		dashboard:     http.FileServer(http.Dir(absDashboard)),
 		csrfToken:     randomCSRFToken,
+		runner:        runner,
 	}, nil
 }
 
@@ -54,6 +80,10 @@ func (server *Server) Handler() http.Handler {
 }
 
 func (server *Server) route(writer http.ResponseWriter, request *http.Request) {
+	if strings.HasPrefix(request.URL.Path, "/v1/runners/") {
+		server.handleRunnerRoute(writer, request)
+		return
+	}
 	switch request.URL.Path {
 	case "/":
 		http.Redirect(writer, request, "/result-screen-wireframe.html", http.StatusSeeOther)

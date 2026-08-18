@@ -22,6 +22,15 @@ The current skeleton provides:
 - Append-only, local JSONL audit event recording with restricted permissions
 - Mandatory cleanup execution and independent artifact-absence verification
 - Versioned `1.0` JSON execution results with one scenario-independent shape
+- An outbound Control Plane client for authenticated lease, acknowledgement,
+  stage-update, and completion requests
+- Local Ed25519 Test Job verification, identity/expiry enforcement, built-in
+  scenario resolution, and nonce replay rejection before execution
+
+The Day 29 transport client allows plain HTTP only to an IP loopback endpoint.
+Non-loopback Control Plane endpoints require HTTPS. The production Runner CLI
+does not yet start a worker loop; wiring verified leases to the existing fixed
+executors and evidence observers is the next milestone.
 
 The production CLI deliberately has no general execution command.
 

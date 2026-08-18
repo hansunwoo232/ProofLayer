@@ -17,6 +17,8 @@ const (
 	testOrigin        = "http://127.0.0.1:8787"
 	testEnvironmentID = "6ba7b810-9dad-41d1-80b4-00c04fd430c8"
 	testHostID        = "6ba7b811-9dad-41d1-80b4-00c04fd430c8"
+	testRunnerID      = "6ba7b812-9dad-41d1-80b4-00c04fd430c8"
+	testRunnerToken   = "runner_token_0123456789ABCDEF0123456789ABCDEF"
 	testIdempotency   = "run_test_0123456789ABCDEF012345"
 )
 
@@ -50,6 +52,36 @@ func newTestServer(t *testing.T) (*Server, *runqueue.Queue) {
 
 func validBody() string {
 	return `{"schema_version":"1.0","environment_id":"` + testEnvironmentID + `","host_id":"` + testHostID + `","scenario_id":"windows-process-marker","scenario_version":"0.1.0"}`
+}
+
+func runnerServer(t *testing.T) (*Server, *runqueue.Queue) {
+	t.Helper()
+	base, queue := newTestServer(t)
+	server, err := NewWithRunner(queue, testOrigin, filepath.Join("..", "..", "..", "dashboard"), RunnerBinding{
+		RunnerID:      testRunnerID,
+		EnvironmentID: testEnvironmentID,
+		HostID:        testHostID,
+		BearerToken:   testRunnerToken,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.csrfToken = base.csrfToken
+	return server, queue
+}
+
+func callRunner(handler http.Handler, method, path, body, runnerID, token string) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(method, path, strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		request.Header.Set("Authorization", "Bearer "+token)
+	}
+	if runnerID != "" {
+		request.URL.Path = strings.Replace(request.URL.Path, testRunnerID, runnerID, 1)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
 }
 
 func session(t *testing.T, handler http.Handler) (*http.Cookie, string) {
@@ -262,6 +294,153 @@ func TestServerRejectsAmbiguousLoopbackOrigin(t *testing.T) {
 	} {
 		if _, err := New(queue, origin, filepath.Join("..", "..", "..", "dashboard")); err == nil {
 			t.Fatalf("ambiguous origin %q was accepted", origin)
+		}
+	}
+}
+
+func TestRunnerTransportRequiresBoundCredentialBeforeLease(t *testing.T) {
+	server, queue := runnerServer(t)
+	handler := server.Handler()
+	if _, err := queue.Enqueue(testIdempotency, runqueue.CreateRequest{
+		SchemaVersion:   runqueue.SchemaVersion,
+		EnvironmentID:   testEnvironmentID,
+		HostID:          testHostID,
+		ScenarioID:      "windows-process-marker",
+		ScenarioVersion: "0.1.0",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	path := "/v1/runners/" + testRunnerID + "/jobs:lease"
+	for _, test := range []struct {
+		name     string
+		runnerID string
+		token    string
+	}{
+		{name: "missing token", runnerID: testRunnerID},
+		{name: "wrong token", runnerID: testRunnerID, token: testRunnerToken + "x"},
+		{name: "wrong runner", runnerID: testHostID, token: testRunnerToken},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response := callRunner(handler, http.MethodPost, path, `{"schema_version":"1.0"}`, test.runnerID, test.token)
+			if response.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+			if response.Header().Get("WWW-Authenticate") == "" {
+				t.Fatal("bearer challenge missing")
+			}
+		})
+	}
+	if queue.Depth() != 1 {
+		t.Fatalf("unauthorized request changed queue depth to %d", queue.Depth())
+	}
+
+	response := callRunner(handler, http.MethodPost, path, `{"schema_version":"1.0"}`, testRunnerID, testRunnerToken)
+	if response.Code != http.StatusOK {
+		t.Fatalf("lease status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var job runqueue.Job
+	if err := json.Unmarshal(response.Body.Bytes(), &job); err != nil {
+		t.Fatal(err)
+	}
+	if job.EnvironmentID != testEnvironmentID || job.HostID != testHostID || job.Signature.Value == "" {
+		t.Fatalf("leased job = %+v", job)
+	}
+	if queue.Depth() != 0 {
+		t.Fatalf("queue depth = %d", queue.Depth())
+	}
+
+	empty := callRunner(handler, http.MethodPost, path, `{"schema_version":"1.0"}`, testRunnerID, testRunnerToken)
+	if empty.Code != http.StatusNoContent || empty.Body.Len() != 0 {
+		t.Fatalf("empty lease = %d, body = %q", empty.Code, empty.Body.String())
+	}
+}
+
+func TestRunnerTransportDrivesOrderedLifecycle(t *testing.T) {
+	server, queue := runnerServer(t)
+	handler := server.Handler()
+	receipt, err := queue.Enqueue(testIdempotency, runqueue.CreateRequest{
+		SchemaVersion:   runqueue.SchemaVersion,
+		EnvironmentID:   testEnvironmentID,
+		HostID:          testHostID,
+		ScenarioID:      "windows-process-marker",
+		ScenarioVersion: "0.1.0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	leasePath := "/v1/runners/" + testRunnerID + "/jobs:lease"
+	if response := callRunner(handler, http.MethodPost, leasePath, `{"schema_version":"1.0"}`, testRunnerID, testRunnerToken); response.Code != http.StatusOK {
+		t.Fatalf("lease status = %d", response.Code)
+	}
+
+	jobPath := "/v1/runners/" + testRunnerID + "/jobs/" + receipt.JobID
+	ack := callRunner(handler, http.MethodPost, jobPath+":ack", `{"schema_version":"1.0","accepted":true}`, testRunnerID, testRunnerToken)
+	if ack.Code != http.StatusOK {
+		t.Fatalf("ack status = %d, body = %s", ack.Code, ack.Body.String())
+	}
+	for _, stage := range []string{
+		"execution", "endpoint_telemetry", "siem_ingestion", "field_validation", "detection", "alert", "cleanup",
+	} {
+		body := `{"schema_version":"1.0","status":"passed","latency_ms":1}`
+		response := callRunner(handler, http.MethodPut, jobPath+"/stages/"+stage, body, testRunnerID, testRunnerToken)
+		if response.Code != http.StatusOK {
+			t.Fatalf("stage %s status = %d, body = %s", stage, response.Code, response.Body.String())
+		}
+	}
+	complete := callRunner(handler, http.MethodPost, jobPath+":complete", `{"schema_version":"1.0"}`, testRunnerID, testRunnerToken)
+	if complete.Code != http.StatusOK {
+		t.Fatalf("complete status = %d, body = %s", complete.Code, complete.Body.String())
+	}
+	snapshot, ok := queue.Status(receipt.JobID)
+	if !ok || snapshot.Status != runqueue.JobStatusCompleted || !snapshot.Terminal {
+		t.Fatalf("snapshot = %+v, exists = %v", snapshot, ok)
+	}
+}
+
+func TestRunnerTransportRejectsMalformedAndOutOfOrderUpdates(t *testing.T) {
+	server, queue := runnerServer(t)
+	handler := server.Handler()
+	receipt, err := queue.Enqueue(testIdempotency, runqueue.CreateRequest{
+		SchemaVersion:   runqueue.SchemaVersion,
+		EnvironmentID:   testEnvironmentID,
+		HostID:          testHostID,
+		ScenarioID:      "windows-process-marker",
+		ScenarioVersion: "0.1.0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	leasePath := "/v1/runners/" + testRunnerID + "/jobs:lease"
+	if response := callRunner(handler, http.MethodPost, leasePath, `{"schema_version":"1.0","unknown":true}`, testRunnerID, testRunnerToken); response.Code != http.StatusBadRequest {
+		t.Fatalf("unknown lease field status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if queue.Depth() != 1 {
+		t.Fatal("malformed lease consumed a job")
+	}
+	if response := callRunner(handler, http.MethodPost, leasePath, `{"schema_version":"1.0"}`, testRunnerID, testRunnerToken); response.Code != http.StatusOK {
+		t.Fatalf("valid lease status = %d", response.Code)
+	}
+	jobPath := "/v1/runners/" + testRunnerID + "/jobs/" + receipt.JobID
+	update := callRunner(handler, http.MethodPut, jobPath+"/stages/execution", `{"schema_version":"1.0","status":"passed","latency_ms":1}`, testRunnerID, testRunnerToken)
+	if update.Code != http.StatusConflict {
+		t.Fatalf("pre-ack update status = %d, body = %s", update.Code, update.Body.String())
+	}
+	wrongMethod := callRunner(handler, http.MethodGet, jobPath+":ack", `{"schema_version":"1.0","accepted":true}`, testRunnerID, testRunnerToken)
+	if wrongMethod.Code != http.StatusMethodNotAllowed || wrongMethod.Header().Get("Allow") != http.MethodPost {
+		t.Fatalf("wrong method response = %d, allow = %q", wrongMethod.Code, wrongMethod.Header().Get("Allow"))
+	}
+}
+
+func TestRunnerBindingValidationFailsClosed(t *testing.T) {
+	_, queue := newTestServer(t)
+	dashboard := filepath.Join("..", "..", "..", "dashboard")
+	for _, binding := range []RunnerBinding{
+		{RunnerID: "invalid", EnvironmentID: testEnvironmentID, HostID: testHostID, BearerToken: testRunnerToken},
+		{RunnerID: testRunnerID, EnvironmentID: testEnvironmentID, HostID: testHostID, BearerToken: "short"},
+	} {
+		if _, err := NewWithRunner(queue, testOrigin, dashboard, binding); err == nil {
+			t.Fatalf("invalid binding was accepted: %+v", binding)
 		}
 	}
 }

@@ -23,6 +23,11 @@ const run = await readJson("examples/test-run-parser-failure.json");
 const createJobRequestSchema = await readJson("create-test-job-request.schema.json");
 const jobReceiptSchema = await readJson("test-job-receipt.schema.json");
 const jobStatusSchema = await readJson("test-job-status.schema.json");
+const runnerVersionSchema = await readJson("runner-version-request.schema.json");
+const runnerAcknowledgementSchema = await readJson(
+  "runner-acknowledgement-request.schema.json",
+);
+const runnerStageUpdateSchema = await readJson("runner-stage-update-request.schema.json");
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -165,6 +170,10 @@ assert.match(job.correlation_id, correlationPattern);
 assert.match(job.scenario_id, scenarioIdPattern);
 assert.match(job.scenario_version, versionPattern);
 assert.ok(Date.parse(job.requested_at) < Date.parse(job.expires_at));
+assert.ok(
+  Date.parse(job.expires_at) - Date.parse(job.requested_at) <= 120000,
+  "Test Job authorization must expire within two minutes",
+);
 assert.match(job.nonce, /^[A-Za-z0-9_-]{22,64}$/);
 assert.equal(job.signature.algorithm, "Ed25519");
 assert.match(job.signature.value, /^[A-Za-z0-9_-]{80,120}$/);
@@ -200,6 +209,18 @@ assert.equal(jobStatusSchema.properties.stages.items, false);
 assert.ok(
   jobStatusSchema.$defs.stage.properties.detail_code.enum.includes("endpoint_event_delayed"),
 );
+assert.equal(runnerVersionSchema.additionalProperties, false);
+assert.deepEqual(runnerVersionSchema.required, ["schema_version"]);
+assert.equal(runnerAcknowledgementSchema.additionalProperties, false);
+assert.deepEqual(runnerAcknowledgementSchema.required, ["schema_version", "accepted"]);
+assert.equal(runnerStageUpdateSchema.additionalProperties, false);
+assert.deepEqual(runnerStageUpdateSchema.required, ["schema_version", "status", "latency_ms"]);
+assert.deepEqual(runnerStageUpdateSchema.properties.status.enum, [
+  "running",
+  "passed",
+  "failed",
+  "not_tested",
+]);
 
 assert.equal(run.schema_version, "1.0");
 assert.match(run.run_id, uuidPattern);
@@ -247,7 +268,7 @@ console.log("PASS registry canary scenario example");
 console.log("PASS scheduled task canary scenario example");
 console.log("PASS three versioned Runner result examples share one shape");
 console.log("PASS test job example");
-console.log("PASS create-job request, receipt, and live-status contracts");
+console.log("PASS browser and authenticated Runner lifecycle contracts");
 console.log("PASS parser-failure run example");
 console.log("PASS cross-contract security invariants");
 
