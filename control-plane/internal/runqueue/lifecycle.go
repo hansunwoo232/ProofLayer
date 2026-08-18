@@ -163,7 +163,8 @@ func (queue *Queue) UpdateStage(environmentID, hostID, jobID string, update Stag
 		return ErrInvalidTransition
 	}
 	priorFailed := priorStageFailed(record.Stages, index)
-	if update.Status == StageStatusNotTested && (!priorFailed || update.Stage == "cleanup") {
+	if update.Status == StageStatusNotTested &&
+		((!priorFailed && update.Stage != "alert") || update.Stage == "cleanup") {
 		return ErrInvalidTransition
 	}
 	if priorFailed && update.Stage != "cleanup" && update.Status != StageStatusNotTested {

@@ -158,8 +158,8 @@ run_vm() {
     isolated)
       net_args=(-nic user,model=virtio-net-pci,restrict=on)
       ;;
-    siem)
-      net_args=(-nic "user,model=virtio-net-pci,restrict=on,guestfwd=tcp:10.0.2.100:8088-cmd:/usr/bin/nc 127.0.0.1 8088")
+	  siem)
+	      net_args=(-nic "user,model=virtio-net-pci,restrict=on,guestfwd=tcp:10.0.2.100:8088-cmd:/usr/bin/nc 127.0.0.1 8088,guestfwd=tcp:10.0.2.100:8089-cmd:/usr/bin/nc 127.0.0.1 8089,guestfwd=tcp:10.0.2.100:8788-cmd:/usr/bin/nc 127.0.0.1 8788")
       ;;
     nat)
       [[ "${ALLOW_INTERNET:-NO}" == "YES" ]] ||

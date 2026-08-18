@@ -180,21 +180,64 @@ lookup, and an independent task artifact file check to confirm absence.
 The `day-25-scheduled-task-cleanup-proof` checkpoint preserves the clean
 Windows, UEFI, and TPM state after all three checks returned PASS.
 
+## Day 30 one-action pipeline gate
+
+Prepare ignored credentials and a short-lived isolated-lab TLS certificate,
+then build the Runner media:
+
+```bash
+./deployments/lab/prepare-day30-lab.sh
+source deployments/lab/day30.env
+./deployments/lab/build-runner-iso.sh
+```
+
+Start the Control Plane in one terminal:
+
+```bash
+source deployments/lab/day30.env
+cd control-plane
+go run ./cmd/prooflayer-control-plane
+```
+
+Start the VM with the generated media and the `siem` network mode. Open
+`http://127.0.0.1:8787`, select the approved Windows Process Marker, and click
+**Run Test** once. In an elevated Windows PowerShell window run:
+
+```bash
+LAB_TOOLS_ISO_OVERRIDE="$(cd ../.. && pwd)/work/prooflayer-lab/prooflayer-runner.iso" \
+  ./deployments/lab/labctl.sh tools
+```
+
+Then run the fixed wrapper in an elevated Windows PowerShell window:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+$media = Get-Volume | Where-Object DriveType -eq 'CD-ROM' | ForEach-Object { Get-Item "$($_.DriveLetter):\run-day30.ps1" -ErrorAction SilentlyContinue } | Select-Object -First 1
+& $media.FullName
+```
+
+The fixed worker leases and verifies the signed job, executes only the built-in
+process marker, proves Sysmon Event ID 1 locally, sends bounded synthetic canary
+fields through HEC, checks exact Splunk ingestion and required field names,
+runs the built-in detection search, publishes terminal stages, and verifies
+cleanup. The local `day30.env`, generated JSON config, private key, certificate,
+and ISO are ignored and must never be shared or committed.
+
 ## Network modes
 
 | Mode | Behavior | Intended use |
 |---|---|---|
 | `offline` | No virtual NIC | Highest-isolation scenario testing |
 | `isolated` | NIC exists; outbound and host access restricted | Default VM operation |
-| `siem` | Guest remains restricted; only `10.0.2.100:8088` forwards to host HEC | Endpoint-to-SIEM lab validation |
+| `siem` | Guest remains restricted; three fixed ports forward to loopback services | Endpoint-to-SIEM and Day 30 validation |
 | `nat` | Guest can reach the internet | Windows Update only; explicit opt-in |
 
 Never use `nat` while a ProofLayer scenario is executing.
 
-The `siem` mode uses QEMU's explicit command-backed `guestfwd` rule. Each guest
-connection to `10.0.2.100:8088` starts the host's `/usr/bin/nc` with the fixed
-destination `127.0.0.1:8088`. It does not grant general host or internet
-access. The guest-visible HEC address is `https://10.0.2.100:8088`.
+The `siem` mode uses three explicit command-backed `guestfwd` rules. Guest
+addresses `10.0.2.100:8088`, `:8089`, and `:8788` map only to the matching
+loopback HEC, Splunk management, and Control Plane TLS ports. They do not grant
+general host or internet access.
 
 The Windows 11 Arm64 guest requires the Microsoft-signed NetKVM driver included
 in the ignored Day 6 media. On a clean checkpoint, run `install-netkvm.ps1` once

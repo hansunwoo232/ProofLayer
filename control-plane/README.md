@@ -3,7 +3,7 @@
 The Control Plane owns Runner registration, scheduling, correlation, audit
 events, and result APIs. ADR-0005 selects Go for the technical PoC.
 
-## Day 29 local process
+## Day 30 local process
 
 From the `control-plane` directory:
 
@@ -14,7 +14,7 @@ go run ./cmd/prooflayer-control-plane
 Open `http://127.0.0.1:8787`. The process serves the result surface and accepts
 one fixed, allowlisted `Run Test` request. It binds only to loopback.
 
-The browser and lifecycle implementation provides:
+The browser, lifecycle, and Runner worker boundary provide:
 
 - exact-origin and double-submit CSRF validation;
 - strict, size-limited JSON parsing;
@@ -31,7 +31,7 @@ submitted by a Runner; updates use a small stable `detail_code` allowlist. A
 failed upstream stage can only move downstream stages to `not_tested`, while
 cleanup remains mandatory before terminal completion.
 
-This is a local-only process. Its queue and signing key are ephemeral, it has no
+This is a local-only process. Its queue is ephemeral, it has no
 operator authentication or durable audit store, and it must not be exposed to
 a LAN, customer environment, or public network. See the
 [Day 27 request boundary](../docs/security/day-27-run-test-request-boundary.md).
@@ -40,12 +40,15 @@ The Runner-facing routes remain disabled unless
 `PROOFLAYER_RUNNER_TOKEN` contains a 32–128 character base64url-style bearer
 credential. When enabled, the local process exposes identity-bound lease,
 acknowledgement, stage-update, and completion routes. The token is never logged;
-the ephemeral Ed25519 public key is logged so a same-host PoC Runner can pin it.
+the Ed25519 public key is logged so a PoC Runner can pin it. Set a base64url
+encoded 32-byte `PROOFLAYER_SIGNING_SEED` to keep this key stable across local
+restarts; without it, the process generates an ephemeral key.
 
-Plain HTTP remains loopback-only on both sides. This mode must not be exposed to
-the Windows VM network, a LAN, a customer environment, or the public internet.
-The next milestone adds the Windows worker orchestration and an authenticated
-transport suitable for the isolated VM boundary.
+Plain HTTP remains loopback-only. When both `PROOFLAYER_RUNNER_TLS_CERT` and
+`PROOFLAYER_RUNNER_TLS_KEY` are set, the same Runner API also listens on
+`127.0.0.1:8788` using TLS. The QEMU lab exposes that listener only through the
+fixed `10.0.2.100:8788` guest forward. This isolated-lab mode must not be exposed
+to a LAN, customer environment, or the public internet.
 
 The initial API contract is documented in
 [`docs/architecture/runner-control-plane-protocol-v0.1.md`](../docs/architecture/runner-control-plane-protocol-v0.1.md).

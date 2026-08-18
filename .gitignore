@@ -16,6 +16,7 @@ __pycache__/
 
 # Local lab state and installation media
 deployments/lab/lab.env
+deployments/lab/day30.env
 deployments/lab/artifacts/
 *.iso
 *.qcow2

@@ -97,6 +97,23 @@ func TestLifecycleCompletesOnlyAfterEveryStage(t *testing.T) {
 	}
 }
 
+func TestLifecycleAllowsOptionalAlertStageToRemainNotTested(t *testing.T) {
+	queue, _ := newTestQueue(t, 4)
+	receipt := leaseAndAcknowledge(t, queue)
+	for _, stage := range stageOrder[:5] {
+		updateStage(t, queue, receipt.JobID, stage, StageStatusPassed, 1, "")
+	}
+	updateStage(t, queue, receipt.JobID, "alert", StageStatusNotTested, 0, "")
+	updateStage(t, queue, receipt.JobID, "cleanup", StageStatusPassed, 1, "")
+	if err := queue.Complete(testEnvironmentID, testHostID, receipt.JobID); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, _ := queue.Status(receipt.JobID)
+	if snapshot.Status != JobStatusCompleted || !snapshot.Terminal {
+		t.Fatalf("snapshot = %+v", snapshot)
+	}
+}
+
 func TestLifecycleRejectsWrongIdentityAndInvalidDetail(t *testing.T) {
 	queue, _ := newTestQueue(t, 4)
 	receipt, err := queue.Enqueue(testIdempotency, validRequest())
