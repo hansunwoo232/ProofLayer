@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="ProofLayer host and Runner connection status."><title>ProofLayer — Hosts</title><link rel="stylesheet" href="/app.css"></head>
+<body><div class="shell"><header class="topbar"><a class="brand" href="/history.html"><span class="brand-mark">PL</span>ProofLayer</a><span class="workspace-chip" id="workspace-name">Loading workspace…</span></header><div class="layout">
+  <aside class="sidebar"><p class="nav-label">Workspace</p><nav class="nav" aria-label="Primary"><a href="/history.html">Test history</a><a href="/test-new.html">New test</a><a href="/hosts.html" aria-current="page">Hosts</a><a href="/schedules.html">Schedules</a></nav></aside>
+  <main><p class="breadcrumb">Workspace / Hosts</p><div class="page-head"><div><h1>Hosts and runners</h1><p class="subtitle">Connection health comes from authenticated runner activity. Offline status never grants or expands access.</p></div><button class="button secondary" id="refresh" type="button">Refresh</button></div>
+  <section class="panel"><div class="table-wrap"><table><thead><tr><th>Host</th><th>Status</th><th>Runner version</th><th>Last seen</th><th>Authorized scenarios</th></tr></thead><tbody id="host-rows"></tbody></table></div><p class="message" id="message" role="status"></p></section></main>
+</div></div><script src="/app.js?v=35"></script><script>
+  (async () => { const { initialize, api, clear, node } = window.ProofLayer; const rows = document.querySelector("#host-rows"); const message = document.querySelector("#message");
+    function td(text, className) { return node("td", text, className); }
+    async function load() { message.textContent = ""; try { const data = await api("/v1/hosts"); clear(rows); (data.items || []).forEach((host) => { const tr = node("tr"); const status = node("span", host.status, `status-pill status-${host.status}`); const statusCell = node("td"); statusCell.append(status); tr.append(td(host.name), statusCell, td(host.runner_version || "Not reported", "technical"), td(host.last_seen_at ? new Date(host.last_seen_at).toLocaleString() : "Never"), td(String((host.allowed_scenario_ids || []).length))); rows.append(tr); }); if (!(data.items || []).length) { const tr = node("tr"); const cell = td("No hosts are registered.", "empty"); cell.colSpan = 5; tr.append(cell); rows.append(tr); } } catch { message.textContent = "Host status could not be loaded."; message.className = "message error"; } }
+    try { await initialize(); await load(); document.querySelector("#refresh").addEventListener("click", load); } catch { message.textContent = "The workspace could not be loaded."; message.className = "message error"; }
+  })();
+</script></body></html>

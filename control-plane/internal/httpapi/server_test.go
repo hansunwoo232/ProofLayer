@@ -211,6 +211,28 @@ func getJobStatus(handler http.Handler, jobID string, cookie *http.Cookie, csrf 
 	return response
 }
 
+func getWorkspaceAPI(handler http.Handler, path string, cookie *http.Cookie, csrf string) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(http.MethodGet, path, nil)
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+	request.Header.Set("X-ProofLayer-CSRF", csrf)
+	request.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
+
+func postWorkspaceAPI(handler http.Handler, path, body string, cookie *http.Cookie, csrf string) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", testOrigin)
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+	request.Header.Set("X-ProofLayer-CSRF", csrf)
+	request.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
+
 func TestSessionAndCreateJob(t *testing.T) {
 	server, queue := newTestServer(t)
 	handler := server.Handler()
@@ -300,17 +322,97 @@ func TestBodyAndContentValidation(t *testing.T) {
 
 func TestStaticWireframeIsServedWithSecurityHeaders(t *testing.T) {
 	server, _ := newTestServer(t)
-	request := httptest.NewRequest(http.MethodGet, "/result-screen-wireframe.html", nil)
-	response := httptest.NewRecorder()
-	server.Handler().ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d", response.Code)
+	for _, path := range []string{
+		"/result-screen-wireframe.html", "/test-new.html", "/hosts.html", "/schedules.html", "/history.html", "/app.css", "/app.js",
+	} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s status = %d", path, response.Code)
+		}
+		if response.Header().Get("Content-Security-Policy") == "" {
+			t.Fatalf("%s content security policy missing", path)
+		}
 	}
-	if !strings.Contains(response.Body.String(), "ProofLayer") {
-		t.Fatal("wireframe content missing")
+}
+
+func TestScenarioHostScheduleAndHistoryAPIs(t *testing.T) {
+	server, queue := runnerServer(t)
+	handler := server.Handler()
+	csrfCookie, csrfToken := session(t, handler)
+
+	scenarios := getWorkspaceAPI(handler, "/v1/scenarios", csrfCookie, csrfToken)
+	if scenarios.Code != http.StatusOK || !strings.Contains(scenarios.Body.String(), `"risk_level":"guarded"`) ||
+		!strings.Contains(scenarios.Body.String(), `"cleanup_required":true`) {
+		t.Fatalf("scenarios = %d, body = %s", scenarios.Code, scenarios.Body.String())
 	}
-	if response.Header().Get("Content-Security-Policy") == "" {
-		t.Fatal("content security policy missing")
+	hosts := getWorkspaceAPI(handler, "/v1/hosts", csrfCookie, csrfToken)
+	if hosts.Code != http.StatusOK || !strings.Contains(hosts.Body.String(), `"status":"offline"`) {
+		t.Fatalf("initial hosts = %d, body = %s", hosts.Code, hosts.Body.String())
+	}
+	leasePath := "/v1/runners/" + testRunnerID + "/jobs:lease"
+	request := httptest.NewRequest(http.MethodPost, leasePath, strings.NewReader(`{"schema_version":"1.0"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer "+testRunnerToken)
+	request.Header.Set("X-ProofLayer-Runner-Version", "0.3.0")
+	heartbeat := httptest.NewRecorder()
+	handler.ServeHTTP(heartbeat, request)
+	if heartbeat.Code != http.StatusNoContent {
+		t.Fatalf("heartbeat = %d, body = %s", heartbeat.Code, heartbeat.Body.String())
+	}
+	hosts = getWorkspaceAPI(handler, "/v1/hosts", csrfCookie, csrfToken)
+	if !strings.Contains(hosts.Body.String(), `"status":"online"`) ||
+		!strings.Contains(hosts.Body.String(), `"runner_version":"0.3.0"`) ||
+		!strings.Contains(hosts.Body.String(), `"last_seen_at"`) {
+		t.Fatalf("online hosts body = %s", hosts.Body.String())
+	}
+
+	invalidHostBody := strings.Replace(validBody(), testHostID, "00000000-0000-4000-8000-000000000000", 1)
+	if response := postJob(handler, invalidHostBody, "invalid_host_0123456789ABCDEF012345", testOrigin, csrfCookie, csrfToken); response.Code != http.StatusForbidden {
+		t.Fatalf("invalid host status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if queue.Depth() != 0 {
+		t.Fatal("unauthorized host request was queued")
+	}
+	if response := postJob(handler, validBody(), testIdempotency, testOrigin, csrfCookie, csrfToken); response.Code != http.StatusCreated {
+		t.Fatalf("valid create status = %d, body = %s", response.Code, response.Body.String())
+	}
+	registryBody := strings.Replace(validBody(), "windows-process-marker", "windows-registry-run-key-canary", 1)
+	if response := postJob(handler, registryBody, "history_second_0123456789ABCDEF0123", testOrigin, csrfCookie, csrfToken); response.Code != http.StatusCreated {
+		t.Fatalf("second create status = %d, body = %s", response.Code, response.Body.String())
+	}
+
+	history := getWorkspaceAPI(handler, "/v1/test-runs?page=1&page_size=1&scenario_id=windows-registry-run-key-canary", csrfCookie, csrfToken)
+	if history.Code != http.StatusOK || !strings.Contains(history.Body.String(), `"total_items":1`) ||
+		!strings.Contains(history.Body.String(), `"windows-registry-run-key-canary"`) {
+		t.Fatalf("history = %d, body = %s", history.Code, history.Body.String())
+	}
+	invalidHistory := getWorkspaceAPI(handler, "/v1/test-runs?page=-1", csrfCookie, csrfToken)
+	if invalidHistory.Code != http.StatusBadRequest {
+		t.Fatalf("invalid history status = %d", invalidHistory.Code)
+	}
+
+	location, err := time.LoadLocation("Europe/Istanbul")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scheduledLocal := time.Now().In(location).Add(2 * time.Minute).Format("2006-01-02T15:04:05")
+	scheduleBody := `{"schema_version":"1.0","host_id":"` + testHostID +
+		`","scenario_id":"windows-process-marker","scenario_version":"0.1.0","scheduled_for_local":"` +
+		scheduledLocal + `","time_zone":"Europe/Istanbul"}`
+	scheduled := postWorkspaceAPI(handler, "/v1/schedules", scheduleBody, csrfCookie, csrfToken)
+	if scheduled.Code != http.StatusCreated || !strings.Contains(scheduled.Body.String(), `"status":"planned"`) ||
+		!strings.Contains(scheduled.Body.String(), `"scheduled_for_utc"`) {
+		t.Fatalf("schedule = %d, body = %s", scheduled.Code, scheduled.Body.String())
+	}
+	conflict := postWorkspaceAPI(handler, "/v1/schedules", scheduleBody, csrfCookie, csrfToken)
+	if conflict.Code != http.StatusConflict || !strings.Contains(conflict.Body.String(), "SCHEDULE_CONFLICT") {
+		t.Fatalf("conflict = %d, body = %s", conflict.Code, conflict.Body.String())
+	}
+	listed := getWorkspaceAPI(handler, "/v1/schedules", csrfCookie, csrfToken)
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), scheduledLocal) {
+		t.Fatalf("schedule list = %d, body = %s", listed.Code, listed.Body.String())
 	}
 }
 

@@ -117,6 +117,9 @@ func TestClientLeasesAndVerifiesBoundSignedJob(t *testing.T) {
 		if request.Header.Get("Authorization") != "Bearer "+testToken {
 			t.Errorf("authorization = %q", request.Header.Get("Authorization"))
 		}
+		if request.Header.Get("X-ProofLayer-Runner-Version") != "0.1.0" {
+			t.Errorf("runner version = %q", request.Header.Get("X-ProofLayer-Runner-Version"))
+		}
 		writeTestJSON(writer, http.StatusOK, job)
 	})
 
@@ -256,6 +259,7 @@ func TestClientConfigurationRejectsInsecureOrUnboundedSettings(t *testing.T) {
 		func(config *Config) { config.BaseURL = "http://10.0.2.2:8787" },
 		func(config *Config) { config.BaseURL = "file:///tmp/control-plane" },
 		func(config *Config) { config.BearerToken = "short" },
+		func(config *Config) { config.Version = "invalid version" },
 		func(config *Config) { config.Identity.State = identity.StateRevoked },
 		func(config *Config) { config.Identity.HostID = strings.ToUpper(config.Identity.HostID) },
 		func(config *Config) { config.SigningPublicKey = nil },

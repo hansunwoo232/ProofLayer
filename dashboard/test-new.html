@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Create a safe ProofLayer detection validation test.">
+  <title>ProofLayer — New Test</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar"><a class="brand" href="/history.html"><span class="brand-mark">PL</span>ProofLayer</a><span class="workspace-chip" id="workspace-name">Loading workspace…</span></header>
+    <div class="layout">
+      <aside class="sidebar"><p class="nav-label">Workspace</p><nav class="nav" aria-label="Primary"><a href="/history.html">Test history</a><a href="/test-new.html" aria-current="page">New test</a><a href="/hosts.html">Hosts</a><a href="/schedules.html">Schedules</a></nav></aside>
+      <main>
+        <p class="breadcrumb">Tests / New test</p>
+        <div class="page-head"><div><h1>Run a validation test</h1><p class="subtitle">Choose one authorized host and one deterministic scenario. ProofLayer shows every expected effect before execution.</p></div></div>
+        <form id="test-form" novalidate>
+          <section class="panel"><h2 class="panel-title">1. Select a host</h2><p class="panel-copy">Only hosts bound to this workspace are available.</p><label class="field">Host<select id="host" required><option value="">Select a host</option></select></label></section>
+          <section class="panel"><h2 class="panel-title">2. Select a scenario</h2><p class="panel-copy">Every scenario is allowlisted, versioned, and requires cleanup.</p><div class="scenario-list" id="scenarios" aria-live="polite"></div></section>
+          <section class="panel"><h2 class="panel-title">3. Confirm execution</h2><p class="panel-copy">The runner accepts only the selected catalog version. Arbitrary commands are not supported.</p><div class="actions"><button class="button" id="submit" type="submit">Run test</button></div><p class="message" id="message" role="status"></p></section>
+        </form>
+      </main>
+    </div>
+  </div>
+  <script src="/app.js?v=35"></script>
+  <script>
+    (async () => {
+      const { initialize, api, idempotencyKey, clear, node } = window.ProofLayer;
+      const message = document.querySelector("#message");
+      const form = document.querySelector("#test-form");
+      const hostSelect = document.querySelector("#host");
+      const list = document.querySelector("#scenarios");
+      const submit = document.querySelector("#submit");
+      let scenarios = [];
+      function fail(text) { message.textContent = text; message.className = "message error"; }
+      try {
+        const session = await initialize();
+        const [catalog, hosts] = await Promise.all([api("/v1/scenarios"), api("/v1/hosts")]);
+        scenarios = catalog.items || [];
+        (hosts.items || []).forEach((host) => { const option = node("option", `${host.name} — ${host.status}`); option.value = host.id; option.dataset.environment = host.environment_id; hostSelect.append(option); });
+        clear(list);
+        scenarios.forEach((scenario) => {
+          const label = node("label", undefined, "scenario-card");
+          const input = node("input"); input.type = "radio"; input.name = "scenario"; input.value = `${scenario.id}@${scenario.version}`;
+          const body = node("span"); body.append(node("span", scenario.name, "scenario-name"), node("span", scenario.description, "scenario-description"));
+          const effects = node("ul", undefined, "effects"); (scenario.expected_effects || []).forEach((effect) => effects.append(node("li", effect))); body.append(effects);
+          const badge = node("span", scenario.risk_level, `badge ${scenario.risk_level}`);
+          label.append(input, body, badge); list.append(label);
+        });
+        if (!scenarios.length) list.append(node("p", "No authorized scenarios are available.", "empty"));
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault(); message.textContent = ""; message.className = "message";
+          const host = hostSelect.selectedOptions[0]; const selected = new FormData(form).get("scenario");
+          if (!host?.value) return fail("Select a host before running the test.");
+          if (!selected) return fail("Select a scenario before running the test.");
+          const [scenarioId, scenarioVersion] = String(selected).split("@");
+          submit.disabled = true;
+          try {
+            const result = await api("/v1/test-jobs", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey() }, body: JSON.stringify({ schema_version: "1.0", environment_id: host.dataset.environment, host_id: host.value, scenario_id: scenarioId, scenario_version: scenarioVersion }) });
+            message.textContent = `Test accepted. Correlation ID: ${result.correlation_id}`;
+          } catch (error) { fail(error.code === "SCENARIO_INVALID" ? "This scenario is not authorized for the selected host." : "The test could not be created. Try again."); }
+          finally { submit.disabled = false; }
+        });
+        void session;
+      } catch (error) { fail(error.message === "authentication_required" ? "Authentication required." : "The test workspace could not be loaded."); }
+    })();
+  </script>
+</body>
+</html>

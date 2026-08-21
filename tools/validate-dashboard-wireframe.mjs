@@ -8,6 +8,14 @@ const wireframePath = path.resolve(toolDirectory, "..", "dashboard", "result-scr
 const source = await readFile(wireframePath, "utf8");
 const loginPath = path.resolve(toolDirectory, "..", "dashboard", "login.html");
 const loginSource = await readFile(loginPath, "utf8");
+const dashboardDirectory = path.resolve(toolDirectory, "..", "dashboard");
+const appSource = await readFile(path.join(dashboardDirectory, "app.js"), "utf8");
+const surfaceSources = Object.fromEntries(await Promise.all(
+  ["test-new.html", "hosts.html", "schedules.html", "history.html"].map(async (name) => [
+    name,
+    await readFile(path.join(dashboardDirectory, name), "utf8"),
+  ]),
+));
 
 assert.match(source, /<html lang="en">/);
 assert.match(source, /<main id="result">/);
@@ -45,6 +53,27 @@ assert.match(loginSource, /credentials: "same-origin"/);
 assert.doesNotMatch(loginSource, /localStorage|sessionStorage|\.innerHTML\s*=/);
 assert.doesNotMatch(loginSource, /<script[^>]+src=/);
 assert.doesNotMatch(loginSource, /https?:\/\/[^\s"']+\.(?:js|css)/i);
+
+for (const [name, page] of Object.entries(surfaceSources)) {
+  assert.match(page, /<html lang="en">/, `${name} must declare English content`);
+  assert.match(page, /<link rel="stylesheet" href="\/app\.css">/);
+  assert.match(page, /<script src="\/app\.js\?v=35"><\/script>/);
+  assert.doesNotMatch(page, /localStorage|sessionStorage|\.innerHTML\s*=/);
+  assert.doesNotMatch(page, /https?:\/\/[^\s"']+\.(?:js|css)/i);
+}
+assert.match(surfaceSources["test-new.html"], /risk_level/);
+assert.match(surfaceSources["test-new.html"], /expected_effects/);
+assert.match(surfaceSources["test-new.html"], /Select a host before running the test/);
+assert.match(surfaceSources["hosts.html"], /runner_version/);
+assert.match(surfaceSources["hosts.html"], /last_seen_at/);
+assert.match(surfaceSources["schedules.html"], /Europe\/Istanbul/);
+assert.match(surfaceSources["schedules.html"], /SCHEDULE_CONFLICT/);
+assert.match(surfaceSources["schedules.html"], /SCHEDULE_TIME_PASSED/);
+assert.match(surfaceSources["history.html"], /page_size: "20"/);
+assert.match(surfaceSources["history.html"], /No test runs match these filters/);
+assert.match(appSource, /credentials: "same-origin"/);
+assert.match(appSource, /"X-ProofLayer-CSRF"/);
+assert.doesNotMatch(appSource, /localStorage|sessionStorage|\.innerHTML\s*=/);
 
 const clickHandlerStart = source.indexOf('button.addEventListener("click"');
 const disableBeforePost = source.indexOf("button.disabled = true", clickHandlerStart);

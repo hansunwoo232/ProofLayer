@@ -14,14 +14,14 @@ endpoint-to-alert pipeline.
 | Test runs | What happened in each validation? | Run list and result detail |
 | Scenarios | Which approved behaviors can run? | Scenario catalog and safety metadata |
 | Hosts | Where can validations run? | Registered host and Runner health |
-| Schedules | When should tests run? | Simple recurring plans |
+| Schedules | When should tests run? | One-time plans |
 | Reports | What evidence can be shared? | JSON and HTML result exports |
 | Audit log | Who requested or changed what? | Immutable operator activity timeline |
 | Settings | How is this workspace configured? | Workspace, users, integrations, security |
 
-Day 31 implements the authentication entry surface and the existing Test Run
-detail. The other destinations define the navigation contract for subsequent
-MVP work; they are not represented as working features yet.
+Days 31–35 implement authentication, the existing Test Run detail, test
+creation, host health, one-time schedules, and filtered history. Overview,
+reports, audit, and settings remain planned.
 
 ## Test Run detail hierarchy
 
@@ -76,10 +76,10 @@ the following future role boundaries without implementing them:
 | `/login.html` | Local workspace sign-in | Implemented |
 | `/` | Authenticated workspace entry | Redirects to current run detail |
 | `/result-screen-wireframe.html` | Test Run result detail | Implemented |
-| `/runs` | Test Run list | Planned |
-| `/scenarios` | Scenario catalog | Planned |
-| `/hosts` | Host inventory | Planned |
-| `/schedules` | Test schedules | Planned |
+| `/history.html` | Filtered Test Run list | Implemented |
+| `/test-new.html` | Host and scenario selection | Implemented |
+| `/hosts.html` | Host inventory and Runner health | Implemented |
+| `/schedules.html` | One-time test schedules | Implemented |
 | `/reports` | Evidence exports | Planned |
 | `/audit` | Operator audit log | Planned |
 | `/settings` | Workspace configuration | Planned |

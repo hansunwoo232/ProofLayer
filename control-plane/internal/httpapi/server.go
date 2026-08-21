@@ -11,9 +11,12 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hansunwoo232/ProofLayer/control-plane/internal/localauth"
+	"github.com/hansunwoo232/ProofLayer/control-plane/internal/mvpstore"
 	"github.com/hansunwoo232/ProofLayer/control-plane/internal/runqueue"
 )
 
@@ -30,6 +33,7 @@ type Server struct {
 	csrfToken     func() (string, error)
 	runner        *RunnerBinding
 	localAuth     *localauth.Service
+	workspace     *mvpstore.Service
 }
 
 func New(queue *runqueue.Queue, allowedOrigin, dashboardDirectory string) (*Server, error) {
@@ -60,6 +64,9 @@ func NewWithRunner(
 	runner.EnvironmentID = strings.ToLower(runner.EnvironmentID)
 	runner.HostID = strings.ToLower(runner.HostID)
 	runner.RunnerID = strings.ToLower(runner.RunnerID)
+	if runner.Version == "" {
+		runner.Version = "0.1.0"
+	}
 	return newServer(queue, allowedOrigin, dashboardDirectory, &runner, nil)
 }
 
@@ -79,6 +86,9 @@ func NewWithRunnerAndLocalAuth(
 	runner.EnvironmentID = strings.ToLower(runner.EnvironmentID)
 	runner.HostID = strings.ToLower(runner.HostID)
 	runner.RunnerID = strings.ToLower(runner.RunnerID)
+	if runner.Version == "" {
+		runner.Version = "0.1.0"
+	}
 	return newServer(queue, allowedOrigin, dashboardDirectory, &runner, localAuth)
 }
 
@@ -101,6 +111,24 @@ func newServer(
 	if err != nil {
 		return nil, err
 	}
+	environmentID, hostID := queue.Identity()
+	workspaceID := "8ba7b810-9dad-41d1-80b4-00c04fd430c8"
+	if localAuth != nil {
+		workspaceID = localAuth.Workspace().ID
+	}
+	runnerID := ""
+	runnerVersion := "0.1.0"
+	if runner != nil {
+		runnerID = runner.RunnerID
+		runnerVersion = runner.Version
+	}
+	workspace, err := mvpstore.New(mvpstore.Config{
+		WorkspaceID: workspaceID, EnvironmentID: environmentID, HostID: hostID,
+		RunnerID: runnerID, HostName: "WIN-LAB-01", RunnerVersion: runnerVersion,
+	})
+	if err != nil {
+		return nil, err
+	}
 	return &Server{
 		queue:         queue,
 		allowedOrigin: allowedOrigin,
@@ -108,6 +136,7 @@ func newServer(
 		csrfToken:     randomCSRFToken,
 		runner:        runner,
 		localAuth:     localAuth,
+		workspace:     workspace,
 	}, nil
 }
 
@@ -137,6 +166,14 @@ func (server *Server) route(writer http.ResponseWriter, request *http.Request) {
 		server.handleLogout(writer, request)
 	case "/v1/test-jobs":
 		server.handleCreateJob(writer, request)
+	case "/v1/scenarios":
+		server.handleScenarios(writer, request)
+	case "/v1/hosts":
+		server.handleHosts(writer, request)
+	case "/v1/schedules":
+		server.handleSchedules(writer, request)
+	case "/v1/test-runs":
+		server.handleHistory(writer, request)
 	default:
 		if strings.HasPrefix(request.URL.Path, "/v1/test-jobs/") {
 			server.handleJobStatus(writer, request)
@@ -144,6 +181,10 @@ func (server *Server) route(writer http.ResponseWriter, request *http.Request) {
 		}
 		server.dashboard.ServeHTTP(writer, request)
 	}
+}
+
+func (server *Server) DispatchDueSchedules() error {
+	return server.workspace.DispatchDue(server.queue)
 }
 
 func (server *Server) handleSession(writer http.ResponseWriter, request *http.Request) {
@@ -309,6 +350,15 @@ func (server *Server) handleCreateJob(writer http.ResponseWriter, request *http.
 		writeError(writer, http.StatusBadRequest, "REQUEST_INVALID")
 		return
 	}
+	if err := server.workspace.Authorize(createRequest.HostID, createRequest.ScenarioID, createRequest.ScenarioVersion); err != nil {
+		switch {
+		case errors.Is(err, mvpstore.ErrHostAccessDenied):
+			writeError(writer, http.StatusForbidden, "HOST_ACCESS_DENIED")
+		default:
+			writeError(writer, http.StatusBadRequest, "SCENARIO_INVALID")
+		}
+		return
+	}
 
 	receipt, err := server.queue.Enqueue(idempotencyKey, createRequest)
 	if err != nil {
@@ -330,6 +380,155 @@ func (server *Server) handleCreateJob(writer http.ResponseWriter, request *http.
 	}
 	writer.Header().Set("Cache-Control", "no-store")
 	writeJSON(writer, status, receipt)
+}
+
+func (server *Server) handleScenarios(writer http.ResponseWriter, request *http.Request) {
+	if !server.readRequestAllowed(writer, request) {
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{
+		"schema_version": mvpstore.SchemaVersion,
+		"items":          server.workspace.Scenarios(),
+	})
+}
+
+func (server *Server) handleHosts(writer http.ResponseWriter, request *http.Request) {
+	if !server.readRequestAllowed(writer, request) {
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{
+		"schema_version": mvpstore.SchemaVersion,
+		"items":          server.workspace.Hosts(),
+	})
+}
+
+func (server *Server) handleSchedules(writer http.ResponseWriter, request *http.Request) {
+	switch request.Method {
+	case http.MethodGet:
+		if !server.readRequestAllowed(writer, request) {
+			return
+		}
+		writeJSON(writer, http.StatusOK, map[string]any{
+			"schema_version": mvpstore.SchemaVersion,
+			"items":          server.workspace.Schedules(),
+		})
+	case http.MethodPost:
+		if !server.mutationRequestAllowed(writer, request) {
+			return
+		}
+		var scheduleRequest mvpstore.ScheduleRequest
+		if !decodeBrowserJSON(writer, request, &scheduleRequest) {
+			return
+		}
+		schedule, err := server.workspace.CreateSchedule(scheduleRequest)
+		if err != nil {
+			switch {
+			case errors.Is(err, mvpstore.ErrScheduleConflict):
+				writeError(writer, http.StatusConflict, "SCHEDULE_CONFLICT")
+			case errors.Is(err, mvpstore.ErrScheduleMissed):
+				writeError(writer, http.StatusUnprocessableEntity, "SCHEDULE_TIME_PASSED")
+			default:
+				writeError(writer, http.StatusBadRequest, "SCHEDULE_INVALID")
+			}
+			return
+		}
+		writeJSON(writer, http.StatusCreated, schedule)
+	default:
+		writer.Header().Set("Allow", http.MethodGet+", "+http.MethodPost)
+		writeError(writer, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED")
+	}
+}
+
+func (server *Server) handleHistory(writer http.ResponseWriter, request *http.Request) {
+	if !server.readRequestAllowed(writer, request) {
+		return
+	}
+	query := runqueue.HistoryQuery{
+		HostID: request.URL.Query().Get("host_id"), ScenarioID: request.URL.Query().Get("scenario_id"),
+	}
+	var err error
+	if value := request.URL.Query().Get("page"); value != "" {
+		query.Page, err = strconv.Atoi(value)
+		if err != nil {
+			writeError(writer, http.StatusBadRequest, "HISTORY_QUERY_INVALID")
+			return
+		}
+	}
+	if value := request.URL.Query().Get("page_size"); value != "" {
+		query.PageSize, err = strconv.Atoi(value)
+		if err != nil {
+			writeError(writer, http.StatusBadRequest, "HISTORY_QUERY_INVALID")
+			return
+		}
+	}
+	if query.From, err = parseOptionalTime(request.URL.Query().Get("from")); err != nil {
+		writeError(writer, http.StatusBadRequest, "HISTORY_QUERY_INVALID")
+		return
+	}
+	if query.To, err = parseOptionalTime(request.URL.Query().Get("to")); err != nil {
+		writeError(writer, http.StatusBadRequest, "HISTORY_QUERY_INVALID")
+		return
+	}
+	page, err := server.queue.History(query)
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, "HISTORY_QUERY_INVALID")
+		return
+	}
+	writeJSON(writer, http.StatusOK, page)
+}
+
+func (server *Server) readRequestAllowed(writer http.ResponseWriter, request *http.Request) bool {
+	if request.Method != http.MethodGet {
+		writer.Header().Set("Allow", http.MethodGet)
+		writeError(writer, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED")
+		return false
+	}
+	if !validCSRF(request) ||
+		(request.Header.Get("Sec-Fetch-Site") != "" && request.Header.Get("Sec-Fetch-Site") != "same-origin") {
+		writeError(writer, http.StatusForbidden, "REQUEST_INTEGRITY_FAILED")
+		return false
+	}
+	if !server.requireAuthentication(writer, request) {
+		return false
+	}
+	writer.Header().Set("Cache-Control", "no-store")
+	return true
+}
+
+func (server *Server) mutationRequestAllowed(writer http.ResponseWriter, request *http.Request) bool {
+	if !server.validOrigin(request) || !validCSRF(request) {
+		writeError(writer, http.StatusForbidden, "REQUEST_INTEGRITY_FAILED")
+		return false
+	}
+	return server.requireAuthentication(writer, request)
+}
+
+func decodeBrowserJSON(writer http.ResponseWriter, request *http.Request, target any) bool {
+	mediaType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		writeError(writer, http.StatusUnsupportedMediaType, "CONTENT_TYPE_INVALID")
+		return false
+	}
+	request.Body = http.MaxBytesReader(writer, request.Body, maximumBody)
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil || ensureEOF(decoder) != nil {
+		writeError(writer, http.StatusBadRequest, "REQUEST_INVALID")
+		return false
+	}
+	return true
+}
+
+func parseOptionalTime(value string) (*time.Time, error) {
+	if value == "" {
+		return nil, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return nil, err
+	}
+	parsed = parsed.UTC()
+	return &parsed, nil
 }
 
 func (server *Server) handleJobStatus(writer http.ResponseWriter, request *http.Request) {

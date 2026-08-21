@@ -92,17 +92,20 @@ type idempotencyRecord struct {
 }
 
 type Queue struct {
-	mu          sync.Mutex
-	capacity    int
-	environment string
-	host        string
-	requestedBy string
-	keyID       string
-	privateKey  ed25519.PrivateKey
-	now         func() time.Time
-	jobs        []Job
-	records     map[string]idempotencyRecord
-	lifecycle   map[string]*lifecycleRecord
+	mu                sync.Mutex
+	capacity          int
+	environment       string
+	host              string
+	requestedBy       string
+	keyID             string
+	privateKey        ed25519.PrivateKey
+	now               func() time.Time
+	jobs              []Job
+	records           map[string]idempotencyRecord
+	lifecycle         map[string]*lifecycleRecord
+	historyOrder      []string
+	historyByHost     map[string][]string
+	historyByScenario map[string][]string
 }
 
 func New(config Config) (*Queue, error) {
@@ -123,16 +126,18 @@ func New(config Config) (*Queue, error) {
 		now = time.Now
 	}
 	return &Queue{
-		capacity:    config.Capacity,
-		environment: strings.ToLower(config.EnvironmentID),
-		host:        strings.ToLower(config.HostID),
-		requestedBy: strings.ToLower(config.RequestedBy),
-		keyID:       config.SigningKeyID,
-		privateKey:  append(ed25519.PrivateKey(nil), config.SigningPrivateKey...),
-		now:         now,
-		jobs:        make([]Job, 0, config.Capacity),
-		records:     make(map[string]idempotencyRecord),
-		lifecycle:   make(map[string]*lifecycleRecord),
+		capacity:          config.Capacity,
+		environment:       strings.ToLower(config.EnvironmentID),
+		host:              strings.ToLower(config.HostID),
+		requestedBy:       strings.ToLower(config.RequestedBy),
+		keyID:             config.SigningKeyID,
+		privateKey:        append(ed25519.PrivateKey(nil), config.SigningPrivateKey...),
+		now:               now,
+		jobs:              make([]Job, 0, config.Capacity),
+		records:           make(map[string]idempotencyRecord),
+		lifecycle:         make(map[string]*lifecycleRecord),
+		historyByHost:     make(map[string][]string),
+		historyByScenario: make(map[string][]string),
 	}, nil
 }
 
@@ -182,6 +187,9 @@ func (queue *Queue) Enqueue(idempotencyKey string, request CreateRequest) (Recei
 	}
 	queue.jobs = append(queue.jobs, job)
 	queue.lifecycle[job.JobID] = newLifecycleRecord(job)
+	queue.historyOrder = append(queue.historyOrder, job.JobID)
+	queue.historyByHost[job.HostID] = append(queue.historyByHost[job.HostID], job.JobID)
+	queue.historyByScenario[job.ScenarioID] = append(queue.historyByScenario[job.ScenarioID], job.JobID)
 	queue.records[idempotencyKey] = idempotencyRecord{
 		fingerprint: fingerprint,
 		receipt:     receipt,
@@ -214,6 +222,12 @@ func (queue *Queue) Depth() int {
 	queue.mu.Lock()
 	defer queue.mu.Unlock()
 	return len(queue.jobs)
+}
+
+func (queue *Queue) Identity() (environmentID, hostID string) {
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	return queue.environment, queue.host
 }
 
 func (queue *Queue) pruneExpiredLocked(now time.Time) {

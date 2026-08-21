@@ -70,6 +70,7 @@ func main() {
 			EnvironmentID: localEnvironmentID,
 			HostID:        localHostID,
 			BearerToken:   runnerToken,
+			Version:       "0.1.0",
 		})
 	case runnerToken == "" && localAuthentication != nil:
 		api, err = httpapi.NewWithLocalAuth(queue, localOrigin, dashboard, localAuthentication)
@@ -83,6 +84,7 @@ func main() {
 				EnvironmentID: localEnvironmentID,
 				HostID:        localHostID,
 				BearerToken:   runnerToken,
+				Version:       "0.1.0",
 			},
 			localAuthentication,
 		)
@@ -131,6 +133,20 @@ func main() {
 
 	shutdownContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-shutdownContext.Done():
+				return
+			case <-ticker.C:
+				if err := api.DispatchDueSchedules(); err != nil && !errors.Is(err, runqueue.ErrQueueFull) {
+					log.Printf("dispatch scheduled test: %v", err)
+				}
+			}
+		}
+	}()
 	serveErrors := make(chan error, len(servers))
 	go func() { serveErrors <- server.ListenAndServe() }()
 	if runnerTLSServer != nil {

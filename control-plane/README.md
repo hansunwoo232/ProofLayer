@@ -40,7 +40,11 @@ The browser, lifecycle, and Runner worker boundary provide:
 - two-minute Ed25519-signed Test Jobs; and
 - a one-time host-bound lease interface;
 - fail-closed acknowledgement and ordered stage transitions; and
-- a session-bound read-only status endpoint for bounded live UI polling.
+- a session-bound read-only status endpoint for bounded live UI polling;
+- a fixed scenario catalog and host authorization view;
+- authenticated Runner last-seen and version health;
+- one-time UTC/Europe-Istanbul scheduling with conflict and missed-plan handling; and
+- indexed, paginated history filtered by date, host, and scenario.
 
 The lifecycle accepts only the seven canonical stages. Detail text cannot be
 submitted by a Runner; updates use a small stable `detail_code` allowlist. A
@@ -48,7 +52,7 @@ failed upstream stage can only move downstream stages to `not_tested`, while
 cleanup remains mandatory before terminal completion.
 
 This is a local-only process. Its queue, local user, and sessions are ephemeral,
-and it has no durable audit store. It must not be exposed to a LAN, customer
+and its schedule/history views are not durable across restarts. It must not be exposed to a LAN, customer
 environment, or public network. See the
 [Day 27 request boundary](../docs/security/day-27-run-test-request-boundary.md).
 
@@ -71,3 +75,6 @@ to a LAN, customer environment, or the public internet.
 
 The initial API contract is documented in
 [`docs/architecture/runner-control-plane-protocol-v0.1.md`](../docs/architecture/runner-control-plane-protocol-v0.1.md).
+
+The Days 32–35 browser and workspace contracts are documented in
+[`docs/architecture/mvp-workspace-surfaces-v0.1.md`](../docs/architecture/mvp-workspace-surfaces-v0.1.md).

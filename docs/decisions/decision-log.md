@@ -9,3 +9,4 @@
 | [ADR-0005](0005-use-go-for-poc-control-plane.md) | 2026-08-17 | Use Go for the PoC Control Plane | Accepted | Before durable multi-host deployment |
 | [ADR-0006](0006-loopback-runner-credential-for-poc.md) | 2026-08-18 | Use an identity-bound credential for the loopback Runner PoC | Local PoC only | Before Windows VM transport |
 | [ADR-0007](0007-workspace-bound-local-sessions.md) | 2026-08-21 | Use workspace-bound local sessions for the MVP | Local MVP only | Before durable multi-user storage |
+| [ADR-0008](0008-store-schedule-instants-in-utc.md) | 2026-08-21 | Store schedule instants in UTC and preserve the submitted zone | Accepted | Before recurring schedules or additional zones |

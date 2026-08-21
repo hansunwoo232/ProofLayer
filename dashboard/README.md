@@ -32,3 +32,16 @@ bounded detail codes are converted into user-facing root-cause copy.
 Queueing does not execute the Runner by itself. Until authenticated outbound
 Runner transport is connected, the local view remains queued and then expires;
 it never fabricates successful stage evidence.
+
+## Days 32–35 workspace surfaces
+
+The local authenticated workspace now includes four connected MVP surfaces:
+
+- `test-new.html`: host selection, scenario risk/effects, and allowlisted job creation.
+- `hosts.html`: Runner connectivity, last-seen time, version, and authorization scope.
+- `schedules.html`: one-time execution in UTC or Europe/Istanbul with conflict handling.
+- `history.html`: paginated test history filtered by date, host, and scenario.
+
+All pages use `app.js` for same-origin session and CSRF handling and `app.css` for
+the shared product shell. No page stores authentication or progress data in
+browser storage, loads third-party assets, or accepts arbitrary runner commands.

@@ -71,6 +71,7 @@ func main() {
 	tlsClient := isolatedLabHTTPClient()
 	controlPlane, err := controlplane.New(controlplane.Config{
 		BaseURL: config.ControlPlaneBaseURL, BearerToken: config.RunnerToken,
+		Version:  "0.1.0",
 		Identity: runnerIdentity, SigningKeyID: labSigningKeyID,
 		SigningPublicKey: ed25519.PublicKey(publicKeyBytes), HTTPClient: tlsClient,
 	})

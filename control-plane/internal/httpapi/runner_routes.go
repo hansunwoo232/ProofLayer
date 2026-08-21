@@ -22,6 +22,7 @@ type RunnerBinding struct {
 	EnvironmentID string
 	HostID        string
 	BearerToken   string
+	Version       string
 }
 
 type versionRequest struct {
@@ -49,6 +50,9 @@ func (binding RunnerBinding) validate() error {
 	if !runnerTokenPattern.MatchString(binding.BearerToken) {
 		return errors.New("runner bearer token is invalid")
 	}
+	if binding.Version != "" && (len(binding.Version) > 32 || strings.ContainsAny(binding.Version, "\r\n\t ")) {
+		return errors.New("runner version is invalid")
+	}
 	return nil
 }
 
@@ -62,6 +66,14 @@ func (server *Server) handleRunnerRoute(writer http.ResponseWriter, request *htt
 		!server.validRunnerAuthorization(request, parts[2]) {
 		writer.Header().Set("WWW-Authenticate", `Bearer realm="prooflayer-runner"`)
 		writeError(writer, http.StatusUnauthorized, "RUNNER_AUTHENTICATION_FAILED")
+		return
+	}
+	version := request.Header.Get("X-ProofLayer-Runner-Version")
+	if version == "" {
+		version = server.runner.Version
+	}
+	if err := server.workspace.RecordRunnerSeen(server.runner.RunnerID, version); err != nil {
+		writeError(writer, http.StatusBadRequest, "RUNNER_VERSION_INVALID")
 		return
 	}
 	writer.Header().Set("Cache-Control", "no-store")

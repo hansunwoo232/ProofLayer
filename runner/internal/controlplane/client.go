@@ -51,6 +51,7 @@ var (
 type Config struct {
 	BaseURL          string
 	BearerToken      string
+	Version          string
 	Identity         identity.RunnerIdentity
 	SigningKeyID     string
 	SigningPublicKey ed25519.PublicKey
@@ -61,6 +62,7 @@ type Config struct {
 type Client struct {
 	baseURL     string
 	token       string
+	version     string
 	identity    identity.RunnerIdentity
 	httpClient  *http.Client
 	verifier    *Verifier
@@ -90,6 +92,9 @@ func (err *RemoteError) Unwrap() error {
 }
 
 func New(config Config) (*Client, error) {
+	if config.Version == "" {
+		config.Version = "0.1.0"
+	}
 	now := config.Now
 	if now == nil {
 		now = func() time.Time { return time.Now().UTC() }
@@ -97,7 +102,8 @@ func New(config Config) (*Client, error) {
 	parsed, err := url.Parse(config.BaseURL)
 	if err != nil || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" ||
 		parsed.Path != "" || parsed.Port() == "" || !validTransport(parsed) ||
-		!bearerTokenPattern.MatchString(config.BearerToken) || config.Identity.Validate(now()) != nil ||
+		!bearerTokenPattern.MatchString(config.BearerToken) || len(config.Version) > 32 ||
+		strings.ContainsAny(config.Version, "\r\n\t ") || config.Identity.Validate(now()) != nil ||
 		config.Identity.State != identity.StateActive || !canonicalIdentity(config.Identity) {
 		return nil, ErrInvalidConfig
 	}
@@ -121,6 +127,7 @@ func New(config Config) (*Client, error) {
 	return &Client{
 		baseURL:    strings.TrimSuffix(config.BaseURL, "/"),
 		token:      config.BearerToken,
+		version:    config.Version,
 		identity:   config.Identity,
 		httpClient: httpClient,
 		verifier:   verifier,
@@ -204,6 +211,7 @@ func (client *Client) doJSON(
 		return 0, err
 	}
 	request.Header.Set("Authorization", "Bearer "+client.token)
+	request.Header.Set("X-ProofLayer-Runner-Version", client.version)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
 	response, err := client.httpClient.Do(request)
