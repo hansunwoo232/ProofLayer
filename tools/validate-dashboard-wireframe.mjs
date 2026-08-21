@@ -6,6 +6,8 @@ import path from "node:path";
 const toolDirectory = path.dirname(fileURLToPath(import.meta.url));
 const wireframePath = path.resolve(toolDirectory, "..", "dashboard", "result-screen-wireframe.html");
 const source = await readFile(wireframePath, "utf8");
+const loginPath = path.resolve(toolDirectory, "..", "dashboard", "login.html");
+const loginSource = await readFile(loginPath, "utf8");
 
 assert.match(source, /<html lang="en">/);
 assert.match(source, /<main id="result">/);
@@ -30,6 +32,19 @@ assert.doesNotMatch(source, /\.innerHTML\s*=/);
 assert.doesNotMatch(source, /\b(?:command|arguments):\s*["'`]/);
 assert.doesNotMatch(source, /<script[^>]+src=/);
 assert.doesNotMatch(source, /https?:\/\/[^\s"']+\.(?:js|css)/i);
+assert.match(source, /session\.authenticated === false/);
+assert.match(source, /fetch\("\/v1\/auth\/logout"/);
+
+assert.match(loginSource, /<html lang="en">/);
+assert.match(loginSource, /autocomplete="username"/);
+assert.match(loginSource, /autocomplete="current-password"/);
+assert.match(loginSource, /fetch\("\/v1\/session"/);
+assert.match(loginSource, /fetch\("\/v1\/auth\/login"/);
+assert.match(loginSource, /"X-ProofLayer-CSRF": csrfToken/);
+assert.match(loginSource, /credentials: "same-origin"/);
+assert.doesNotMatch(loginSource, /localStorage|sessionStorage|\.innerHTML\s*=/);
+assert.doesNotMatch(loginSource, /<script[^>]+src=/);
+assert.doesNotMatch(loginSource, /https?:\/\/[^\s"']+\.(?:js|css)/i);
 
 const clickHandlerStart = source.indexOf('button.addEventListener("click"');
 const disableBeforePost = source.indexOf("button.disabled = true", clickHandlerStart);
@@ -67,4 +82,4 @@ assert.deepEqual(result.stage_statuses, [
 ]);
 assert.equal(result.raw_event_included, false);
 
-console.log("PASS local result-screen wireframe contract");
+console.log("PASS local authenticated dashboard contract");

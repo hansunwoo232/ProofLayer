@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/ed25519"
 	"encoding/base64"
+	"os"
 	"testing"
 )
 
@@ -28,5 +29,37 @@ func TestLoadSigningPrivateKeyIsStableForConfiguredSeed(t *testing.T) {
 func TestLoadSigningPrivateKeyRejectsInvalidSeed(t *testing.T) {
 	if _, err := loadSigningPrivateKey("too-short"); err == nil {
 		t.Fatal("invalid seed was accepted")
+	}
+}
+
+func TestLocalAuthenticationIsOptInAndClearsBootstrapPassword(t *testing.T) {
+	t.Setenv("PROOFLAYER_LOCAL_ADMIN_PASSWORD", "")
+	service, err := localAuthenticationFromEnvironment()
+	if err != nil || service != nil {
+		t.Fatalf("disabled local authentication = %v, error = %v", service, err)
+	}
+
+	t.Setenv("PROOFLAYER_LOCAL_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("PROOFLAYER_LOCAL_ADMIN_EMAIL", "Operator@ProofLayer.Local")
+	service, err = localAuthenticationFromEnvironment()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if service == nil || service.Workspace().ID != localWorkspaceID {
+		t.Fatalf("local authentication = %+v", service)
+	}
+	if _, present := os.LookupEnv("PROOFLAYER_LOCAL_ADMIN_PASSWORD"); present {
+		t.Fatal("bootstrap password remained in the process environment")
+	}
+	principal, err := service.Authenticate("operator@prooflayer.local", "correct horse battery staple")
+	if err != nil || principal.WorkspaceID != localWorkspaceID {
+		t.Fatalf("principal = %+v, error = %v", principal, err)
+	}
+}
+
+func TestLocalAuthenticationRejectsWeakBootstrapPassword(t *testing.T) {
+	t.Setenv("PROOFLAYER_LOCAL_ADMIN_PASSWORD", "too-short")
+	if _, err := localAuthenticationFromEnvironment(); err == nil {
+		t.Fatal("weak bootstrap password was accepted")
 	}
 }

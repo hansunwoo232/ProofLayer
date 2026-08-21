@@ -11,10 +11,12 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/hansunwoo232/ProofLayer/control-plane/internal/httpapi"
+	"github.com/hansunwoo232/ProofLayer/control-plane/internal/localauth"
 	"github.com/hansunwoo232/ProofLayer/control-plane/internal/runqueue"
 )
 
@@ -27,6 +29,7 @@ const (
 	localHostID        = "6ba7b811-9dad-41d1-80b4-00c04fd430c8"
 	localRunnerID      = "6ba7b812-9dad-41d1-80b4-00c04fd430c8"
 	localOperatorID    = "7ba7b811-9dad-41d1-80b4-00c04fd430c8"
+	localWorkspaceID   = "8ba7b810-9dad-41d1-80b4-00c04fd430c8"
 	localSigningKeyID  = "local-poc-ed25519-v1"
 )
 
@@ -52,17 +55,37 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	localAuthentication, err := localAuthenticationFromEnvironment()
+	if err != nil {
+		log.Fatal("configure local authentication: ", err)
+	}
 	runnerToken := os.Getenv("PROOFLAYER_RUNNER_TOKEN")
 	var api *httpapi.Server
-	if runnerToken == "" {
+	switch {
+	case runnerToken == "" && localAuthentication == nil:
 		api, err = httpapi.New(queue, localOrigin, dashboard)
-	} else {
+	case runnerToken != "" && localAuthentication == nil:
 		api, err = httpapi.NewWithRunner(queue, localOrigin, dashboard, httpapi.RunnerBinding{
 			RunnerID:      localRunnerID,
 			EnvironmentID: localEnvironmentID,
 			HostID:        localHostID,
 			BearerToken:   runnerToken,
 		})
+	case runnerToken == "" && localAuthentication != nil:
+		api, err = httpapi.NewWithLocalAuth(queue, localOrigin, dashboard, localAuthentication)
+	default:
+		api, err = httpapi.NewWithRunnerAndLocalAuth(
+			queue,
+			localOrigin,
+			dashboard,
+			httpapi.RunnerBinding{
+				RunnerID:      localRunnerID,
+				EnvironmentID: localEnvironmentID,
+				HostID:        localHostID,
+				BearerToken:   runnerToken,
+			},
+			localAuthentication,
+		)
 	}
 	if err != nil {
 		log.Fatal("create local HTTP API: ", err)
@@ -73,6 +96,11 @@ func main() {
 		publicKey := privateKey.Public().(ed25519.PublicKey)
 		log.Printf("Runner transport enabled for %s", localRunnerID)
 		log.Printf("Runner signing key %s public key: %s", localSigningKeyID, base64.RawURLEncoding.EncodeToString(publicKey))
+	}
+	if localAuthentication == nil {
+		log.Print("Local operator authentication disabled: PROOFLAYER_LOCAL_ADMIN_PASSWORD is not set")
+	} else {
+		log.Print("Local operator authentication enabled for workspace prooflayer-lab")
 	}
 
 	server := &http.Server{
@@ -125,6 +153,36 @@ func main() {
 	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 		log.Fatal("serve local Control Plane: ", serveErr)
 	}
+}
+
+func localAuthenticationFromEnvironment() (*localauth.Service, error) {
+	password, configured := os.LookupEnv("PROOFLAYER_LOCAL_ADMIN_PASSWORD")
+	if !configured || password == "" {
+		return nil, nil
+	}
+	_ = os.Unsetenv("PROOFLAYER_LOCAL_ADMIN_PASSWORD")
+	email := strings.TrimSpace(os.Getenv("PROOFLAYER_LOCAL_ADMIN_EMAIL"))
+	if email == "" {
+		email = "admin@prooflayer.local"
+	}
+	return localauth.New(localauth.Config{
+		Workspace: localauth.Workspace{
+			ID:   localWorkspaceID,
+			Slug: "prooflayer-lab",
+			Name: "ProofLayer Lab",
+		},
+		User: localauth.User{
+			ID:          localOperatorID,
+			WorkspaceID: localWorkspaceID,
+			Email:       email,
+			DisplayName: "Local Administrator",
+			Role:        localauth.RoleAdmin,
+			Status:      localauth.StatusActive,
+		},
+		Password:        password,
+		IdleTimeout:     30 * time.Minute,
+		AbsoluteTimeout: 8 * time.Hour,
+	})
 }
 
 func loadSigningPrivateKey(encodedSeed string) (ed25519.PrivateKey, error) {

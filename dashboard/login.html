@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · ProofLayer</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --background: #06100e;
+      --panel: #0c1815;
+      --line: rgba(200, 232, 218, 0.14);
+      --text: #eef8f3;
+      --muted: #91a69e;
+      --accent: #8fffd2;
+      --accent-ink: #072019;
+      --danger: #ff9e9e;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 18% 12%, rgba(48, 163, 123, 0.16), transparent 34%),
+        radial-gradient(circle at 82% 88%, rgba(59, 106, 90, 0.13), transparent 32%),
+        var(--background);
+      font: 15px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main { width: min(420px, 100%); }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      font-size: 18px;
+      font-weight: 760;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      place-items: center;
+      border-radius: 10px;
+      color: var(--accent-ink);
+      background: var(--accent);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .card {
+      padding: 32px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(12, 24, 21, 0.94);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 6vw, 36px);
+      line-height: 1.12;
+      letter-spacing: -0.035em;
+    }
+
+    .intro { margin: 0 0 28px; color: var(--muted); }
+    form { display: grid; gap: 18px; }
+    label { display: grid; gap: 7px; font-weight: 680; }
+
+    input {
+      width: 100%;
+      min-height: 46px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      color: var(--text);
+      background: #071310;
+      font: inherit;
+    }
+
+    input:focus {
+      border-color: rgba(143, 255, 210, 0.66);
+      outline: 3px solid rgba(143, 255, 210, 0.12);
+    }
+
+    button {
+      min-height: 46px;
+      margin-top: 4px;
+      border: 0;
+      border-radius: 9px;
+      color: var(--accent-ink);
+      background: var(--accent);
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    button:disabled { cursor: wait; opacity: 0.65; }
+
+    .message {
+      min-height: 23px;
+      margin: 16px 0 0;
+      color: var(--danger);
+      font-size: 14px;
+    }
+
+    .boundary {
+      margin: 20px 0 0;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="brand" aria-label="ProofLayer">
+      <span class="brand-mark" aria-hidden="true">PL</span>
+      <span>ProofLayer</span>
+    </div>
+    <section class="card" aria-labelledby="page-title">
+      <h1 id="page-title">Sign in to your workspace</h1>
+      <p class="intro">Continue to the local Detection Reliability workspace.</p>
+      <form id="login-form">
+        <label>
+          Email
+          <input id="email" name="email" type="email" autocomplete="username" maxlength="254" required autofocus>
+        </label>
+        <label>
+          Password
+          <input id="password" name="password" type="password" autocomplete="current-password" minlength="12" maxlength="128" required>
+        </label>
+        <button id="submit" type="submit" disabled>Sign in</button>
+      </form>
+      <p class="message" id="message" role="alert" aria-live="polite"></p>
+      <p class="boundary">Local MVP access · workspace-bound session · no credential data is stored in the browser.</p>
+    </section>
+  </main>
+  <script>
+    (() => {
+      "use strict";
+
+      const form = document.querySelector("#login-form");
+      const submit = document.querySelector("#submit");
+      const message = document.querySelector("#message");
+      const email = document.querySelector("#email");
+      const password = document.querySelector("#password");
+      let csrfToken = "";
+
+      async function initialize() {
+        try {
+          const response = await fetch("/v1/session", { credentials: "same-origin", cache: "no-store" });
+          if (!response.ok) throw new Error("session unavailable");
+          const session = await response.json();
+          if (session.authenticated === true && session.user) {
+            window.location.replace("/");
+            return;
+          }
+          if (typeof session.csrf_token !== "string" || session.csrf_token.length < 32) {
+            throw new Error("session invalid");
+          }
+          csrfToken = session.csrf_token;
+          submit.disabled = false;
+        } catch {
+          message.textContent = "The local Control Plane is unavailable. Start it and refresh this page.";
+        }
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        submit.disabled = true;
+        submit.textContent = "Signing in…";
+        message.textContent = "";
+        try {
+          const response = await fetch("/v1/auth/login", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              "Content-Type": "application/json",
+              "X-ProofLayer-CSRF": csrfToken
+            },
+            body: JSON.stringify({
+              schema_version: "1.0",
+              email: email.value,
+              password: password.value
+            })
+          });
+          password.value = "";
+          if (!response.ok) {
+            message.textContent = response.status === 401
+              ? "The email or password is incorrect."
+              : "Sign-in could not be completed. Please try again.";
+            return;
+          }
+          window.location.replace("/");
+        } catch {
+          password.value = "";
+          message.textContent = "The local Control Plane is unavailable. Please try again.";
+        } finally {
+          submit.disabled = false;
+          submit.textContent = "Sign in";
+        }
+      });
+
+      initialize();
+    })();
+  </script>
+</body>
+</html>

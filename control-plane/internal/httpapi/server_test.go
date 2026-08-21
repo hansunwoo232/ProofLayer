@@ -9,7 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/hansunwoo232/ProofLayer/control-plane/internal/localauth"
 	"github.com/hansunwoo232/ProofLayer/control-plane/internal/runqueue"
 )
 
@@ -70,6 +72,45 @@ func runnerServer(t *testing.T) (*Server, *runqueue.Queue) {
 	return server, queue
 }
 
+func localAuthServer(t *testing.T) (*Server, *runqueue.Queue) {
+	t.Helper()
+	_, queue := newTestServer(t)
+	authentication, err := localauth.New(localauth.Config{
+		Workspace: localauth.Workspace{
+			ID:   "8ba7b810-9dad-41d1-80b4-00c04fd430c8",
+			Slug: "prooflayer-lab",
+			Name: "ProofLayer Lab",
+		},
+		User: localauth.User{
+			ID:          "7ba7b811-9dad-41d1-80b4-00c04fd430c8",
+			WorkspaceID: "8ba7b810-9dad-41d1-80b4-00c04fd430c8",
+			Email:       "admin@prooflayer.local",
+			DisplayName: "Local Administrator",
+			Role:        localauth.RoleAdmin,
+			Status:      localauth.StatusActive,
+		},
+		Password: "correct horse battery staple",
+		PasswordParameters: localauth.PasswordParameters{
+			MemoryKiB: 8 * 1024, Iterations: 1, Parallelism: 1, SaltBytes: 16, KeyBytes: 32,
+		},
+		IdleTimeout:     30 * time.Minute,
+		AbsoluteTimeout: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewWithLocalAuth(queue, testOrigin, filepath.Join("..", "..", "..", "dashboard"), authentication)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sequence := 0
+	server.csrfToken = func() (string, error) {
+		sequence++
+		return "csrf_0123456789ABCDEF0123456789ABCDEF_" + string(rune('0'+sequence)), nil
+	}
+	return server, queue
+}
+
 func callRunner(handler http.Handler, method, path, body, runnerID, token string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(method, path, strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
@@ -96,11 +137,51 @@ func session(t *testing.T, handler http.Handler) (*http.Cookie, string) {
 	if len(cookies) != 1 || !cookies[0].HttpOnly || cookies[0].SameSite != http.SameSiteStrictMode {
 		t.Fatalf("session cookie = %+v", cookies)
 	}
-	var document map[string]string
+	var document struct {
+		CSRFToken string `json:"csrf_token"`
+	}
 	if err := json.Unmarshal(response.Body.Bytes(), &document); err != nil {
 		t.Fatal(err)
 	}
-	return cookies[0], document["csrf_token"]
+	return cookies[0], document.CSRFToken
+}
+
+func login(
+	handler http.Handler,
+	email,
+	password string,
+	csrfCookie *http.Cookie,
+	csrfToken string,
+) *httptest.ResponseRecorder {
+	body := `{"schema_version":"1.0","email":` + string(mustJSON(email)) + `,"password":` + string(mustJSON(password)) + `}`
+	request := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", testOrigin)
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+	request.Header.Set("X-ProofLayer-CSRF", csrfToken)
+	request.AddCookie(csrfCookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
+
+func mustJSON(value string) []byte {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return encoded
+}
+
+func cookieNamed(t *testing.T, response *httptest.ResponseRecorder, name string) *http.Cookie {
+	t.Helper()
+	for _, cookie := range response.Result().Cookies() {
+		if cookie.Name == name {
+			return cookie
+		}
+	}
+	t.Fatalf("cookie %s was not set", name)
+	return nil
 }
 
 func postJob(handler http.Handler, body, idempotency, origin string, cookie *http.Cookie, csrf string) *httptest.ResponseRecorder {
@@ -230,6 +311,126 @@ func TestStaticWireframeIsServedWithSecurityHeaders(t *testing.T) {
 	}
 	if response.Header().Get("Content-Security-Policy") == "" {
 		t.Fatal("content security policy missing")
+	}
+}
+
+func TestLocalLoginAuthorizesJobAndLogoutRevokesSession(t *testing.T) {
+	server, queue := localAuthServer(t)
+	handler := server.Handler()
+	csrfCookie, csrfToken := session(t, handler)
+
+	unauthorized := postJob(handler, validBody(), testIdempotency, testOrigin, csrfCookie, csrfToken)
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated create status = %d, body = %s", unauthorized.Code, unauthorized.Body.String())
+	}
+	if queue.Depth() != 0 {
+		t.Fatal("unauthenticated request was queued")
+	}
+
+	for _, credentials := range []struct {
+		email    string
+		password string
+	}{
+		{email: "unknown@prooflayer.local", password: "correct horse battery staple"},
+		{email: "admin@prooflayer.local", password: "incorrect password value"},
+	} {
+		response := login(handler, credentials.email, credentials.password, csrfCookie, csrfToken)
+		if response.Code != http.StatusUnauthorized || !strings.Contains(response.Body.String(), "AUTHENTICATION_FAILED") {
+			t.Fatalf("invalid login = %d, body = %s", response.Code, response.Body.String())
+		}
+	}
+
+	loggedIn := login(handler, " ADMIN@ProofLayer.Local ", "correct horse battery staple", csrfCookie, csrfToken)
+	if loggedIn.Code != http.StatusOK {
+		t.Fatalf("login status = %d, body = %s", loggedIn.Code, loggedIn.Body.String())
+	}
+	sessionCookie := cookieNamed(t, loggedIn, sessionCookieName)
+	rotatedCSRF := cookieNamed(t, loggedIn, csrfCookieName)
+	if !sessionCookie.HttpOnly || sessionCookie.SameSite != http.SameSiteStrictMode ||
+		!rotatedCSRF.HttpOnly || rotatedCSRF.SameSite != http.SameSiteStrictMode ||
+		rotatedCSRF.Value == csrfToken {
+		t.Fatalf("login cookies are not hardened or rotated: session=%+v csrf=%+v", sessionCookie, rotatedCSRF)
+	}
+	var loginDocument struct {
+		Authenticated bool                `json:"authenticated"`
+		CSRFToken     string              `json:"csrf_token"`
+		User          localauth.Principal `json:"user"`
+		Workspace     localauth.Workspace `json:"workspace"`
+	}
+	if err := json.Unmarshal(loggedIn.Body.Bytes(), &loginDocument); err != nil {
+		t.Fatal(err)
+	}
+	if !loginDocument.Authenticated || loginDocument.CSRFToken != rotatedCSRF.Value ||
+		loginDocument.User.WorkspaceID != loginDocument.Workspace.ID {
+		t.Fatalf("login document = %+v", loginDocument)
+	}
+
+	authorizedRequest := httptest.NewRequest(http.MethodPost, "/v1/test-jobs", strings.NewReader(validBody()))
+	authorizedRequest.Header.Set("Content-Type", "application/json")
+	authorizedRequest.Header.Set("Origin", testOrigin)
+	authorizedRequest.Header.Set("Sec-Fetch-Site", "same-origin")
+	authorizedRequest.Header.Set("Idempotency-Key", testIdempotency)
+	authorizedRequest.Header.Set("X-ProofLayer-CSRF", rotatedCSRF.Value)
+	authorizedRequest.AddCookie(rotatedCSRF)
+	authorizedRequest.AddCookie(sessionCookie)
+	authorized := httptest.NewRecorder()
+	handler.ServeHTTP(authorized, authorizedRequest)
+	if authorized.Code != http.StatusCreated || queue.Depth() != 1 {
+		t.Fatalf("authenticated create = %d, body = %s, depth = %d", authorized.Code, authorized.Body.String(), queue.Depth())
+	}
+
+	logoutRequest := httptest.NewRequest(http.MethodPost, "/v1/auth/logout", nil)
+	logoutRequest.Header.Set("Origin", testOrigin)
+	logoutRequest.Header.Set("Sec-Fetch-Site", "same-origin")
+	logoutRequest.Header.Set("X-ProofLayer-CSRF", rotatedCSRF.Value)
+	logoutRequest.AddCookie(rotatedCSRF)
+	logoutRequest.AddCookie(sessionCookie)
+	logout := httptest.NewRecorder()
+	handler.ServeHTTP(logout, logoutRequest)
+	if logout.Code != http.StatusNoContent {
+		t.Fatalf("logout status = %d, body = %s", logout.Code, logout.Body.String())
+	}
+	if cookieNamed(t, logout, sessionCookieName).MaxAge != -1 || cookieNamed(t, logout, csrfCookieName).MaxAge != -1 {
+		t.Fatal("logout did not clear browser cookies")
+	}
+
+	reuse := httptest.NewRequest(http.MethodGet, "/v1/test-jobs/00000000-0000-4000-8000-000000000000", nil)
+	reuse.Header.Set("Sec-Fetch-Site", "same-origin")
+	reuse.Header.Set("X-ProofLayer-CSRF", rotatedCSRF.Value)
+	reuse.AddCookie(rotatedCSRF)
+	reuse.AddCookie(sessionCookie)
+	reused := httptest.NewRecorder()
+	handler.ServeHTTP(reused, reuse)
+	if reused.Code != http.StatusUnauthorized {
+		t.Fatalf("revoked session reuse status = %d, body = %s", reused.Code, reused.Body.String())
+	}
+}
+
+func TestAuthenticatedSessionDocumentIsWorkspaceBound(t *testing.T) {
+	server, _ := localAuthServer(t)
+	handler := server.Handler()
+	csrfCookie, csrfToken := session(t, handler)
+	loggedIn := login(handler, "admin@prooflayer.local", "correct horse battery staple", csrfCookie, csrfToken)
+	sessionCookie := cookieNamed(t, loggedIn, sessionCookieName)
+
+	request := httptest.NewRequest(http.MethodGet, "/v1/session", nil)
+	request.AddCookie(sessionCookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("session status = %d", response.Code)
+	}
+	var document struct {
+		Authenticated bool                `json:"authenticated"`
+		User          localauth.Principal `json:"user"`
+		Workspace     localauth.Workspace `json:"workspace"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &document); err != nil {
+		t.Fatal(err)
+	}
+	if !document.Authenticated || document.User.Role != localauth.RoleAdmin ||
+		document.User.WorkspaceID != document.Workspace.ID {
+		t.Fatalf("session document = %+v", document)
 	}
 }
 

@@ -13,12 +13,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/hansunwoo232/ProofLayer/control-plane/internal/localauth"
 	"github.com/hansunwoo232/ProofLayer/control-plane/internal/runqueue"
 )
 
 const (
-	csrfCookieName = "prooflayer_csrf"
-	maximumBody    = 4096
+	csrfCookieName    = "prooflayer_csrf"
+	sessionCookieName = "prooflayer_session"
+	maximumBody       = 4096
 )
 
 type Server struct {
@@ -27,10 +29,23 @@ type Server struct {
 	dashboard     http.Handler
 	csrfToken     func() (string, error)
 	runner        *RunnerBinding
+	localAuth     *localauth.Service
 }
 
 func New(queue *runqueue.Queue, allowedOrigin, dashboardDirectory string) (*Server, error) {
-	return newServer(queue, allowedOrigin, dashboardDirectory, nil)
+	return newServer(queue, allowedOrigin, dashboardDirectory, nil, nil)
+}
+
+func NewWithLocalAuth(
+	queue *runqueue.Queue,
+	allowedOrigin,
+	dashboardDirectory string,
+	localAuth *localauth.Service,
+) (*Server, error) {
+	if localAuth == nil {
+		return nil, errors.New("local authentication service is required")
+	}
+	return newServer(queue, allowedOrigin, dashboardDirectory, nil, localAuth)
 }
 
 func NewWithRunner(
@@ -45,7 +60,26 @@ func NewWithRunner(
 	runner.EnvironmentID = strings.ToLower(runner.EnvironmentID)
 	runner.HostID = strings.ToLower(runner.HostID)
 	runner.RunnerID = strings.ToLower(runner.RunnerID)
-	return newServer(queue, allowedOrigin, dashboardDirectory, &runner)
+	return newServer(queue, allowedOrigin, dashboardDirectory, &runner, nil)
+}
+
+func NewWithRunnerAndLocalAuth(
+	queue *runqueue.Queue,
+	allowedOrigin,
+	dashboardDirectory string,
+	runner RunnerBinding,
+	localAuth *localauth.Service,
+) (*Server, error) {
+	if err := runner.validate(); err != nil {
+		return nil, err
+	}
+	if localAuth == nil {
+		return nil, errors.New("local authentication service is required")
+	}
+	runner.EnvironmentID = strings.ToLower(runner.EnvironmentID)
+	runner.HostID = strings.ToLower(runner.HostID)
+	runner.RunnerID = strings.ToLower(runner.RunnerID)
+	return newServer(queue, allowedOrigin, dashboardDirectory, &runner, localAuth)
 }
 
 func newServer(
@@ -53,6 +87,7 @@ func newServer(
 	allowedOrigin,
 	dashboardDirectory string,
 	runner *RunnerBinding,
+	localAuth *localauth.Service,
 ) (*Server, error) {
 	if queue == nil {
 		return nil, errors.New("job queue is required")
@@ -72,6 +107,7 @@ func newServer(
 		dashboard:     http.FileServer(http.Dir(absDashboard)),
 		csrfToken:     randomCSRFToken,
 		runner:        runner,
+		localAuth:     localAuth,
 	}, nil
 }
 
@@ -86,9 +122,19 @@ func (server *Server) route(writer http.ResponseWriter, request *http.Request) {
 	}
 	switch request.URL.Path {
 	case "/":
+		if server.localAuth != nil {
+			if _, ok := server.authenticatedPrincipal(request); !ok {
+				http.Redirect(writer, request, "/login.html", http.StatusSeeOther)
+				return
+			}
+		}
 		http.Redirect(writer, request, "/result-screen-wireframe.html", http.StatusSeeOther)
 	case "/v1/session":
 		server.handleSession(writer, request)
+	case "/v1/auth/login":
+		server.handleLogin(writer, request)
+	case "/v1/auth/logout":
+		server.handleLogout(writer, request)
 	case "/v1/test-jobs":
 		server.handleCreateJob(writer, request)
 	default:
@@ -111,19 +157,120 @@ func (server *Server) handleSession(writer http.ResponseWriter, request *http.Re
 		writeError(writer, http.StatusInternalServerError, "SESSION_TOKEN_FAILED")
 		return
 	}
+	setCSRFCookie(writer, token, request.TLS != nil)
+	writer.Header().Set("Cache-Control", "no-store")
+	document := map[string]any{
+		"schema_version": "1.0",
+		"csrf_token":     token,
+		"authenticated":  server.localAuth == nil,
+	}
+	if principal, ok := server.authenticatedPrincipal(request); ok {
+		document["authenticated"] = true
+		document["user"] = principal
+		document["workspace"] = server.localAuth.Workspace()
+	}
+	writeJSON(writer, http.StatusOK, document)
+}
+
+type loginRequest struct {
+	SchemaVersion string `json:"schema_version"`
+	Email         string `json:"email"`
+	Password      string `json:"password"`
+}
+
+func (server *Server) handleLogin(writer http.ResponseWriter, request *http.Request) {
+	if server.localAuth == nil {
+		writeError(writer, http.StatusNotFound, "LOCAL_AUTH_DISABLED")
+		return
+	}
+	if request.Method != http.MethodPost {
+		writer.Header().Set("Allow", http.MethodPost)
+		writeError(writer, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED")
+		return
+	}
+	if !server.validOrigin(request) || !validCSRF(request) {
+		writeError(writer, http.StatusForbidden, "REQUEST_INTEGRITY_FAILED")
+		return
+	}
+	mediaType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		writeError(writer, http.StatusUnsupportedMediaType, "CONTENT_TYPE_INVALID")
+		return
+	}
+	request.Body = http.MaxBytesReader(writer, request.Body, maximumBody)
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields()
+	var login loginRequest
+	if err := decoder.Decode(&login); err != nil || ensureEOF(decoder) != nil ||
+		login.SchemaVersion != "1.0" || len(login.Email) > 254 || len(login.Password) > 128 {
+		writeError(writer, http.StatusBadRequest, "REQUEST_INVALID")
+		return
+	}
+	principal, err := server.localAuth.Authenticate(login.Email, login.Password)
+	if err != nil {
+		writer.Header().Set("WWW-Authenticate", `Session realm="ProofLayer"`)
+		writeError(writer, http.StatusUnauthorized, "AUTHENTICATION_FAILED")
+		return
+	}
+	sessionToken, err := server.localAuth.CreateSession(principal)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, "SESSION_CREATION_FAILED")
+		return
+	}
+	csrfToken, err := server.csrfToken()
+	if err != nil {
+		server.localAuth.RevokeSession(sessionToken)
+		writeError(writer, http.StatusInternalServerError, "SESSION_TOKEN_FAILED")
+		return
+	}
+	secure := request.TLS != nil
+	setCSRFCookie(writer, csrfToken, secure)
 	http.SetCookie(writer, &http.Cookie{
-		Name:     csrfCookieName,
-		Value:    token,
+		Name:     sessionCookieName,
+		Value:    sessionToken,
 		Path:     "/",
-		MaxAge:   1800,
 		HttpOnly: true,
+		Secure:   secure,
 		SameSite: http.SameSiteStrictMode,
 	})
 	writer.Header().Set("Cache-Control", "no-store")
-	writeJSON(writer, http.StatusOK, map[string]string{
+	writeJSON(writer, http.StatusOK, map[string]any{
 		"schema_version": "1.0",
-		"csrf_token":     token,
+		"authenticated":  true,
+		"csrf_token":     csrfToken,
+		"user":           principal,
+		"workspace":      server.localAuth.Workspace(),
 	})
+}
+
+func (server *Server) handleLogout(writer http.ResponseWriter, request *http.Request) {
+	if server.localAuth == nil {
+		writeError(writer, http.StatusNotFound, "LOCAL_AUTH_DISABLED")
+		return
+	}
+	if request.Method != http.MethodPost {
+		writer.Header().Set("Allow", http.MethodPost)
+		writeError(writer, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED")
+		return
+	}
+	if !server.validOrigin(request) || !validCSRF(request) {
+		writeError(writer, http.StatusForbidden, "REQUEST_INTEGRITY_FAILED")
+		return
+	}
+	sessionCookie, err := request.Cookie(sessionCookieName)
+	if err != nil {
+		writeError(writer, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED")
+		return
+	}
+	if _, err := server.localAuth.VerifySession(sessionCookie.Value); err != nil {
+		clearBrowserCookies(writer, request.TLS != nil)
+		writeError(writer, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED")
+		return
+	}
+	server.localAuth.RevokeSession(sessionCookie.Value)
+	clearBrowserCookies(writer, request.TLS != nil)
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.WriteHeader(http.StatusNoContent)
 }
 
 func (server *Server) handleCreateJob(writer http.ResponseWriter, request *http.Request) {
@@ -134,6 +281,9 @@ func (server *Server) handleCreateJob(writer http.ResponseWriter, request *http.
 	}
 	if !server.validOrigin(request) || !validCSRF(request) {
 		writeError(writer, http.StatusForbidden, "REQUEST_INTEGRITY_FAILED")
+		return
+	}
+	if !server.requireAuthentication(writer, request) {
 		return
 	}
 	mediaType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
@@ -193,6 +343,9 @@ func (server *Server) handleJobStatus(writer http.ResponseWriter, request *http.
 		writeError(writer, http.StatusForbidden, "REQUEST_INTEGRITY_FAILED")
 		return
 	}
+	if !server.requireAuthentication(writer, request) {
+		return
+	}
 	jobID := strings.TrimPrefix(request.URL.Path, "/v1/test-jobs/")
 	if jobID == "" || strings.Contains(jobID, "/") {
 		writeError(writer, http.StatusNotFound, "JOB_NOT_FOUND")
@@ -205,6 +358,30 @@ func (server *Server) handleJobStatus(writer http.ResponseWriter, request *http.
 	}
 	writer.Header().Set("Cache-Control", "no-store")
 	writeJSON(writer, http.StatusOK, status)
+}
+
+func (server *Server) authenticatedPrincipal(request *http.Request) (localauth.Principal, bool) {
+	if server.localAuth == nil {
+		return localauth.Principal{}, false
+	}
+	cookie, err := request.Cookie(sessionCookieName)
+	if err != nil {
+		return localauth.Principal{}, false
+	}
+	principal, err := server.localAuth.VerifySession(cookie.Value)
+	return principal, err == nil
+}
+
+func (server *Server) requireAuthentication(writer http.ResponseWriter, request *http.Request) bool {
+	if server.localAuth == nil {
+		return true
+	}
+	if _, ok := server.authenticatedPrincipal(request); !ok {
+		writer.Header().Set("WWW-Authenticate", `Session realm="ProofLayer"`)
+		writeError(writer, http.StatusUnauthorized, "AUTHENTICATION_REQUIRED")
+		return false
+	}
+	return true
 }
 
 func (server *Server) validOrigin(request *http.Request) bool {
@@ -238,6 +415,32 @@ func randomCSRFToken() (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(buffer), nil
+}
+
+func setCSRFCookie(writer http.ResponseWriter, token string, secure bool) {
+	http.SetCookie(writer, &http.Cookie{
+		Name:     csrfCookieName,
+		Value:    token,
+		Path:     "/",
+		MaxAge:   1800,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+func clearBrowserCookies(writer http.ResponseWriter, secure bool) {
+	for _, name := range []string{sessionCookieName, csrfCookieName} {
+		http.SetCookie(writer, &http.Cookie{
+			Name:     name,
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			HttpOnly: true,
+			Secure:   secure,
+			SameSite: http.SameSiteStrictMode,
+		})
+	}
 }
 
 func (server *Server) securityHeaders(next http.Handler) http.Handler {

@@ -96,6 +96,22 @@
       background: var(--panel);
     }
 
+    .logout-button {
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--muted);
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .logout-button:hover,
+    .logout-button:focus-visible {
+      border-color: rgba(143, 255, 210, 0.45);
+      color: var(--text);
+      outline: none;
+    }
+
     .layout {
       display: grid;
       grid-template-columns: 220px minmax(0, 1fr);
@@ -522,6 +538,7 @@
       <div class="topbar-meta">
         <span class="environment">Isolated Lab</span>
         <span>Detection Reliability</span>
+        <button class="logout-button" id="logout" type="button" hidden>Sign out</button>
       </div>
     </header>
 
@@ -664,6 +681,7 @@
 
       const button = document.querySelector("#run-test");
       const status = document.querySelector("#run-state");
+      const logoutButton = document.querySelector("#logout");
       const request = Object.freeze({
         schema_version: "1.0",
         environment_id: "6ba7b810-9dad-41d1-80b4-00c04fd430c8",
@@ -779,13 +797,31 @@
           if (typeof session.csrf_token !== "string" || session.csrf_token.length < 32) {
             throw new Error("session invalid");
           }
+          if (session.authenticated === false) {
+            window.location.replace("/login.html");
+            return;
+          }
           csrfToken = session.csrf_token;
+          logoutButton.hidden = !session.user;
           button.disabled = false;
           status.textContent = "Ready · fixed lab host · signed allowlisted job · two-minute expiry";
         } catch {
           status.textContent = "Start the local Control Plane to enable Run Test.";
         }
       }
+
+      logoutButton.addEventListener("click", async () => {
+        logoutButton.disabled = true;
+        try {
+          await fetch("/v1/auth/logout", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "X-ProofLayer-CSRF": csrfToken }
+          });
+        } finally {
+          window.location.replace("/login.html");
+        }
+      });
 
       function formatLatency(stage) {
         if (stage.status === "pending") return "Waiting";
